@@ -1,0 +1,91 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens.
+ *
+ * PLACEHOLDER SET - these values are a neutral stand-in until the Claude
+ * Design handoff bundle lands. Every colour, radius, shadow and font in the
+ * app resolves through a token declared here, so swapping the design system in
+ * means replacing this block and nothing else. Do not hardcode hex values in
+ * components.
+ */
+@theme {
+  /* Surfaces: the world is dark so the 3D canvas carries the light. */
+  --color-surface-base: #0b0a1a;
+  --color-surface-raised: #14132a;
+  --color-surface-overlay: #1d1b3a;
+  --color-surface-sunken: #070615;
+
+  /* Brand: a stage-light violet with a warm accent for wins and prizes. */
+  --color-brand-100: #e5e0ff;
+  --color-brand-300: #b8aaff;
+  --color-brand-500: #7c5cff;
+  --color-brand-700: #4a2fd4;
+
+  --color-accent-300: #ffd88a;
+  --color-accent-500: #ffb020;
+  --color-accent-700: #c47a00;
+
+  /* Feedback */
+  --color-success-500: #2fbf71;
+  --color-warning-500: #e8a33d;
+  --color-danger-500: #e5484d;
+
+  /* Text */
+  --color-text-primary: #f4f2ff;
+  --color-text-secondary: #b3aecd;
+  --color-text-muted: #7d7899;
+  --color-text-inverse: #0b0a1a;
+
+  --color-border-subtle: #2a2750;
+  --color-border-strong: #423d70;
+
+  --font-display: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+
+  --shadow-panel: 0 20px 60px -20px rgb(0 0 0 / 0.75);
+  --shadow-glow: 0 0 30px -6px var(--color-brand-500);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-surface-base);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+
+  /* The hub canvas owns the pointer; text selection would fight the camera. */
+  canvas {
+    display: block;
+    touch-action: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-300);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

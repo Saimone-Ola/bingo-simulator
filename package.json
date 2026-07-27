@@ -1,0 +1,29 @@
+{
+  "name": "bingo-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bingo Simulator - 3D multiplayer web game (monorepo)",
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @bingo/server --filter @bingo/client dev",
+    "dev:server": "pnpm --filter @bingo/server dev",
+    "dev:client": "pnpm --filter @bingo/client dev",
+    "build": "pnpm --filter @bingo/shared build && pnpm --filter @bingo/server build && pnpm --filter @bingo/client build",
+    "typecheck": "pnpm -r typecheck",
+    "secrets": "node scripts/gen-secrets.mjs",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @bingo/server db:generate",
+    "db:migrate": "pnpm --filter @bingo/server db:migrate",
+    "db:seed": "pnpm --filter @bingo/server db:seed",
+    "db:studio": "pnpm --filter @bingo/server db:studio"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["argon2", "esbuild", "@tailwindcss/oxide"]
+  }
+}

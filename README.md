@@ -1,0 +1,300 @@
+# Bingo Simulator
+
+Gioco 3D multiplayer via browser: hub navigabile, sale bingo e slot create dagli
+utenti, price game sparsi nel mondo. Interfaccia in italiano, codice e commenti
+in inglese.
+
+**Solo crediti virtuali.** Nessun deposito, nessun prelievo, nessuna conversione
+in denaro reale, nessun riferimento a marchi di casinò esistenti.
+
+---
+
+## Stato: Fase 0 completata
+
+| Fase | Contenuto | Stato |
+|---|---|---|
+| 0 | Monorepo, TypeScript, Neon + migrazioni, auth, ledger, deploy | ✅ fatto |
+| 1 | Hub 3D, avatar, movimento multiplayer Colyseus, chat | ⬜ |
+| 2 | Sala bingo funzionante end-to-end | ⬜ |
+| 3 | Sale create dagli utenti, regole, codice privato, inviti | ⬜ |
+| 4 | Slot giocabili + editor con calcolo RTP | ⬜ |
+| 5 | Editor visivo sala, pattern personalizzati, sale slot | ⬜ |
+| 6 | Price game, eventi a orario, jackpot | ⬜ |
+| 7 | Negozio, inventario, guardaroba, progressione | ⬜ |
+| 8 | Moderazione, anti-cheat, ottimizzazione, analytics, i18n | ⬜ |
+
+---
+
+## Struttura
+
+```
+bingo-simulator/          <- radice del repository
+├── packages/
+│   ├── shared/     contratti condivisi: schemi Zod, costanti, protocollo Colyseus
+│   ├── server/     API Fastify, Drizzle + PostgreSQL, auth, ledger  (+ Colyseus da fase 1)
+│   └── client/     React + Vite + React Three Fiber, Tailwind, Zustand
+├── scripts/        utility (generazione segreti)
+├── pnpm-workspace.yaml
+└── vercel.json     deploy del solo client
+```
+
+`@bingo/shared` esporta TypeScript sorgente: client e server non possono
+divergere sui contratti perché compilano lo stesso file.
+
+---
+
+## Prerequisiti
+
+- **Node.js 22+** — <https://nodejs.org> (verifica con `node -v`)
+- **pnpm 10+** — `npm install -g pnpm`
+- **Git**
+- **PostgreSQL**: in produzione Neon; in locale va bene Neon anche per lo
+  sviluppo, così non devi installare niente
+
+> **Windows**: usa PowerShell, ma **non incollare comandi con `&&`**. Windows
+> PowerShell 5.1 (quello preinstallato) non lo supporta: separa i comandi con
+> `;` oppure eseguili su righe diverse. Tutti i comandi qui sotto sono già
+> scritti uno per riga apposta.
+
+## Avvio in locale
+
+### 1. Clona il repository
+
+```
+git clone https://github.com/Saimone-Ola/bingo-simulator.git
+cd bingo-simulator
+```
+
+### 2. Installa le dipendenze
+
+```
+npm install -g pnpm
+pnpm install
+```
+
+Se `pnpm` non viene riconosciuto subito dopo l'installazione globale, chiudi e
+riapri il terminale: la `PATH` viene aggiornata solo per le nuove sessioni.
+
+### 3. Database
+
+**Con Neon** (consigliato, identico alla produzione, zero installazioni): crea
+un progetto su [neon.tech](https://neon.tech) e copia la connection string. Usa
+un *branch* dedicato per lo sviluppo e uno per i test.
+
+**Con un PostgreSQL locale**, se preferisci: `createdb bingo`.
+
+### 4. Variabili d'ambiente
+
+Windows (PowerShell):
+
+```
+Copy-Item .env.example packages\server\.env
+Copy-Item packages\client\.env.example packages\client\.env
+```
+
+macOS / Linux:
+
+```
+cp .env.example packages/server/.env
+cp packages/client/.env.example packages/client/.env
+```
+
+Genera i due segreti JWT — devono essere diversi tra loro:
+
+```
+pnpm secrets
+```
+
+Incolla le due righe stampate in `packages/server/.env` (sostituendo quelle
+segnaposto) e metti lì anche la connection string di Neon in `DATABASE_URL` e
+`DATABASE_URL_UNPOOLED`. Per aprire il file su Windows: `notepad
+packages\server\.env`.
+
+Il server rifiuta di avviarsi se manca una variabile o se i due segreti
+coincidono: meglio un boot fallito che un token firmabile da chi non deve.
+
+### 5. Migrazioni e seed
+
+```
+pnpm db:migrate
+pnpm db:seed
+```
+
+Utenze create dal seed (sovrascrivibili con `SEED_ADMIN_EMAIL` ecc.):
+
+| Email | Password | Ruolo |
+|---|---|---|
+| `admin@bingo.local` | `cambiami-subito-2026` | admin |
+| `giocatore@bingo.local` | `cambiami-subito-2026` | player |
+
+### 6. Avvio
+
+```
+pnpm dev
+```
+
+API su `:3001`, client su `:5173`. Apri <http://localhost:5173>, crea un account
+e atterri nell'hub (in fase 0 una scena segnaposto che verifica la pipeline 3D
+end-to-end).
+
+### Se qualcosa non parte
+
+| Sintomo | Causa e rimedio |
+|---|---|
+| `Il token '&&' non è un separatore di istruzioni valido` | Sei su Windows PowerShell 5.1. Esegui i comandi su righe separate, o usa `;` |
+| `pnpm : Termine 'pnpm' non riconosciuto` | pnpm non installato o `PATH` non aggiornata: `npm install -g pnpm`, poi riapri il terminale |
+| `Impossibile trovare il percorso '…\.env.example'` | Non sei dentro `bingo-simulator/`. Fai `cd` nella cartella prima di copiare |
+| `Invalid environment configuration` all'avvio | Manca una variabile in `packages/server/.env`, oppure i due segreti JWT sono uguali |
+| Errore di compilazione di `argon2` durante `pnpm install` | Manca un compilatore C++. Installa i [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) con il workload "Desktop development with C++", poi rilancia `pnpm install` |
+
+### Comandi utili
+
+| Comando | Cosa fa |
+|---|---|
+| `pnpm dev` | API + client in watch |
+| `pnpm secrets` | genera i due segreti JWT |
+| `pnpm build` | build di produzione dei tre pacchetti |
+| `pnpm typecheck` | `tsc --noEmit` su tutto il workspace |
+| `pnpm test` | suite di test |
+| `pnpm db:generate` | genera una migrazione dal diff dello schema |
+| `pnpm db:migrate` | applica le migrazioni |
+| `pnpm db:studio` | Drizzle Studio |
+| `pnpm --filter @bingo/server db:check` | verifica di integrità del ledger |
+
+---
+
+## Test
+
+```bash
+pnpm test                                        # unit test, nessun database
+TEST_DATABASE_URL=postgresql://… pnpm test       # include i test di integrità del ledger
+```
+
+I test che toccano il database si auto-escludono senza `TEST_DATABASE_URL`, così
+`pnpm test` gira sempre su un checkout pulito. Coprono, ad oggi:
+
+- hashing Argon2id, rotazione e riuso dei refresh token, manomissione del JWT;
+- **saldo materializzato sempre uguale alla somma del ledger**;
+- 200 movimenti concorrenti sullo stesso wallet senza perdere un credito;
+- 20 addebiti simultanei su un saldo che ne copre 5 → esattamente 5 passano;
+- idempotenza sotto retry storm: 10 tentativi, un solo accredito;
+- `UPDATE`/`DELETE` su `ledger_entries` rifiutati **dal database**;
+- nessun dato sensibile nei log quando una query fallisce.
+
+Ancora da scrivere (fasi successive): verifica vincita su tutti i pattern
+bingo, simulazione di 100.000 spin per l'RTP, tenuta della sala con 20 client.
+
+Attenzione: `ledger_entries` è append-only, quindi i test di integrità lasciano
+le loro righe nel database. Puntali su un branch Neon usa-e-getta.
+
+---
+
+## Architettura
+
+### Server-authoritative, senza eccezioni
+
+Il client non calcola mai un esito. Estrazione palline, risultato degli spin,
+verifica del bingo e ogni movimento di crediti avvengono sul server; il client
+riceve e renderizza. Il protocollo in `shared/src/protocol.ts` è scritto di
+conseguenza: ogni messaggio client → server è una *richiesta*, mai
+l'affermazione di un fatto.
+
+### RNG e verificabilità
+
+`crypto.randomBytes` lato server. Ogni partita e ogni spin salvano
+`server_seed_hash` (pubblicato prima) e `server_seed` (pubblicato dopo), così
+chiunque può rigiocare la sequenza e verificarla.
+
+### Ledger immutabile
+
+I crediti non si aggiornano mai con un `UPDATE` del saldo. Ogni movimento è una
+riga di `ledger_entries` scritta nella stessa transazione che aggiorna il saldo
+materializzato in `wallets`, con il wallet bloccato `FOR UPDATE`. Tre difese in
+profondità:
+
+1. `services/ledger.ts` è l'unica porta d'accesso; l'`UPDATE` del wallet è
+   condizionato al valore letto, quindi una scrittura concorrente non silenziosa
+   fa fallire l'intera transazione invece di far divergere il saldo;
+2. il database rifiuta `UPDATE`, `DELETE` e `TRUNCATE` su `ledger_entries`
+   (trigger, migrazione `0001`). Le correzioni si fanno come in un libro mastro
+   vero: con una scrittura di segno opposto;
+3. `pnpm --filter @bingo/server db:check` ri-deriva ogni saldo dalla somma delle
+   righe e segnala qualunque scostamento.
+
+### Auth
+
+Email + password, hashing **Argon2id** (64 MiB, 3 passate). Access token JWT a
+vita breve (15 min) + refresh token opaco a rotazione, salvato solo come digest
+HMAC: un dump del database non contiene credenziali riutilizzabili. Il riuso di
+un refresh token già ruotato revoca l'intera famiglia di sessioni. Il tempo di
+risposta del login è uguale per email inesistente e password sbagliata.
+
+### Modello dati
+
+19 tabelle, tutte in `packages/server/src/db/schema/`:
+
+| File | Tabelle |
+|---|---|
+| `identity.ts` | `users`, `auth_sessions`, `avatars`, `wardrobe_sets`, `friendships` |
+| `economy.ts` | `wallets`, `ledger_entries`, `items`, `user_inventory` |
+| `rooms.ts` | `rooms`, `bingo_configs`, `bingo_games`, `bingo_cards` |
+| `slots.ts` | `slot_machines`, `slot_spins` |
+| `world.ts` | `prize_games`, `prize_claims` |
+| `social.ts` | `chat_messages`, `reports` |
+
+Le regole che devono valere sempre sono `CHECK` nel database, non solo
+controlli applicativi: saldo mai negativo, importo di ledger mai zero, sala
+privata sempre con codice, macchina slot pubblicabile solo con RTP fra 0,85 e
+0,98 effettivamente calcolato.
+
+---
+
+## API (fase 0)
+
+| Metodo | Rotta | Note |
+|---|---|---|
+| `GET` | `/health`, `/health/db` | liveness / readiness |
+| `POST` | `/api/auth/register` | crea utente, wallet, avatar e bonus di benvenuto in una transazione |
+| `POST` | `/api/auth/login` | |
+| `POST` | `/api/auth/refresh` | rotazione con rilevamento del riuso |
+| `POST` | `/api/auth/logout`, `/logout-all` | |
+| `GET` | `/api/auth/me` | |
+| `GET` | `/api/wallet/balance` | sola lettura |
+| `GET` | `/api/wallet/statement` | estratto conto |
+
+Non esiste, e non esisterà, una rotta che scrive un saldo: i crediti si muovono
+solo come effetto di un'azione di gioco risolta dal server.
+
+Gli errori hanno sempre la forma `{ "error": { "code", "message", "fields"? } }`
+con codici stabili (`invalid_credentials`, `insufficient_funds`, …); il client
+li traduce in italiano.
+
+---
+
+## Design system
+
+I token vivono in `packages/client/src/styles/index.css` (blocco `@theme` di
+Tailwind 4) e sono al momento **un set segnaposto**: il bundle di handoff di
+Claude Design non era allegato alla consegna. Ogni colore, raggio, ombra e font
+dell'app passa da lì, quindi sostituire quel blocco sostituisce il design system
+senza toccare i componenti.
+
+## Deploy
+
+- **Client → Vercel.** Root directory del progetto: la radice del repo. Il
+  `vercel.json` builda `@bingo/client` e serve `packages/client/dist` con
+  rewrite SPA. Variabili: `VITE_API_URL`, `VITE_WS_URL`.
+- **Server → Render / Fly.io / Railway** (serve WebSocket persistenti, quindi
+  non Vercel). `pnpm --filter @bingo/server build` produce `dist/index.js`,
+  avvio con `node dist/index.js`. Variabili: quelle di `.env.example`.
+- **Database → Neon.** Le migrazioni vanno eseguite sull'endpoint *unpooled*
+  (`DATABASE_URL_UNPOOLED`); il pooler non regge il lock del migratore.
+
+## Vincoli di prodotto
+
+- Interfaccia in italiano, codice e commenti in inglese.
+- Nessun riferimento a marchi di casinò reali.
+- Nessuna funzione di deposito, prelievo o conversione in denaro reale.
+- Avviso di età consigliata mostrato in registrazione e in home; il campo
+  `users.session_limit_minutes` è già previsto per i limiti di sessione
+  opzionali (UI in fase 8).
