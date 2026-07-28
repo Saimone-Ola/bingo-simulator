@@ -18,9 +18,11 @@
   },
   "dependencies": {
     "@bingo/shared": "workspace:*",
+    "@colyseus/schema": "^4.0.30",
     "@fastify/cors": "^11.3.0",
     "@fastify/rate-limit": "^11.1.0",
     "argon2": "^0.45.1",
+    "colyseus": "^0.17.10",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.10.0",
     "fastify-plugin": "^5.1.0",
@@ -29,6 +31,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@colyseus/testing": "^0.17.11",
     "@types/node": "^22.15.0",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
