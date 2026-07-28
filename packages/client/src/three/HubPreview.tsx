@@ -2,6 +2,7 @@ import { Suspense, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { AdaptiveDpr, Grid, OrbitControls, Stats } from '@react-three/drei';
 import type { Mesh } from 'three';
+import { WORLD_FOG, WORLD_PALETTE } from './palette';
 
 /**
  * Phase 0 placeholder scene.
@@ -23,7 +24,7 @@ function SpinningBall() {
   return (
     <mesh ref={mesh} castShadow position={[0, 1.2, 0]}>
       <icosahedronGeometry args={[1, 3]} />
-      <meshStandardMaterial color="#7c5cff" roughness={0.25} metalness={0.4} />
+      <meshStandardMaterial color={WORLD_PALETTE.brand} roughness={0.25} metalness={0.4} />
     </mesh>
   );
 }
@@ -37,8 +38,8 @@ export default function HubPreview({ showStats = false }: { showStats?: boolean 
       dpr={[1, 2]}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
     >
-      <color attach="background" args={['#0b0a1a']} />
-      <fog attach="fog" args={['#0b0a1a', 12, 30]} />
+      <color attach="background" args={[WORLD_PALETTE.background]} />
+      <fog attach="fog" args={[WORLD_PALETTE.fog, WORLD_FOG.near, WORLD_FOG.far]} />
 
       {/*
         Lighting is entirely local and analytic. drei's <Environment preset>
@@ -48,10 +49,20 @@ export default function HubPreview({ showStats = false }: { showStats?: boolean 
         a host we do not control. Any image-based lighting we adopt later ships
         from our own asset bundle.
       */}
-      <hemisphereLight args={['#8a7dff', '#120f26', 0.6]} />
+      <hemisphereLight args={[WORLD_PALETTE.fillLight, WORLD_PALETTE.bounceLight, 0.6]} />
       <ambientLight intensity={0.25} />
-      <directionalLight position={[5, 8, 5]} intensity={1.8} castShadow />
-      <pointLight position={[-4, 2, -3]} intensity={18} color="#ffb020" distance={14} />
+      <directionalLight
+        position={[5, 8, 5]}
+        intensity={1.8}
+        color={WORLD_PALETTE.keyLight}
+        castShadow
+      />
+      <pointLight
+        position={[-4, 2, -3]}
+        intensity={18}
+        color={WORLD_PALETTE.accent}
+        distance={14}
+      />
 
       <Suspense fallback={null}>
         <SpinningBall />
@@ -59,8 +70,8 @@ export default function HubPreview({ showStats = false }: { showStats?: boolean 
 
       <Grid
         args={[40, 40]}
-        cellColor="#2a2750"
-        sectionColor="#423d70"
+        cellColor={WORLD_PALETTE.gridCell}
+        sectionColor={WORLD_PALETTE.gridSection}
         fadeDistance={28}
         infiniteGrid
       />

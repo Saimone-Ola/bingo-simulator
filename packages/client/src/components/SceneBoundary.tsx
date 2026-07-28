@@ -36,10 +36,10 @@ export class SceneBoundary extends Component<Props, State> {
     return (
       <div className="grid h-full place-items-center p-8 text-center">
         <div className="max-w-sm">
-          <h2 className="text-lg font-semibold text-(--color-text-primary)">
+          <h2 className="text-lg font-semibold text-content-primary">
             Impossibile avviare la grafica 3D
           </h2>
-          <p className="mt-2 text-sm text-(--color-text-secondary)">
+          <p className="mt-2 text-sm text-content-secondary">
             Il tuo browser non è riuscito ad aprire il contesto WebGL. Prova ad aggiornare la
             pagina, ad abilitare l’accelerazione hardware o a usare un altro browser.
           </p>

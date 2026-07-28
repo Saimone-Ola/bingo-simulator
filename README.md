@@ -34,6 +34,7 @@ bingo-simulator/          <- radice del repository
 │   ├── server/     API Fastify, Drizzle + PostgreSQL, auth, ledger  (+ Colyseus da fase 1)
 │   └── client/     React + Vite + React Three Fiber, Tailwind, Zustand
 ├── scripts/        utility (generazione segreti)
+├── DESIGN.md       design system: token, componenti, regole
 ├── pnpm-workspace.yaml
 └── vercel.json     deploy del solo client
 ```
@@ -273,11 +274,19 @@ li traduce in italiano.
 
 ## Design system
 
-I token vivono in `packages/client/src/styles/index.css` (blocco `@theme` di
-Tailwind 4) e sono al momento **un set segnaposto**: il bundle di handoff di
-Claude Design non era allegato alla consegna. Ogni colore, raggio, ombra e font
-dell'app passa da lì, quindi sostituire quel blocco sostituisce il design system
-senza toccare i componenti.
+Documentazione completa in **[DESIGN.md](DESIGN.md)**. Guida di stile viva su
+**`/stile`** (<http://localhost:5173/stile>): monta i componenti reali, quindi
+non può divergere dal prodotto.
+
+I token stanno tutti in `packages/client/src/styles/tokens.css` (blocco `@theme`
+di Tailwind 4). Regola non negoziabile: **nessun valore letterale nei
+componenti** — niente hex, niente pixel, niente `rgba()`. Unica eccezione
+documentata `src/three/palette.ts`, perché i materiali Three.js non leggono le
+custom property CSS.
+
+Il bundle di handoff di Claude Design non è mai arrivato: questo sistema è stato
+definito su richiesta esplicita in sostituzione. Se il bundle dovesse arrivare,
+si sostituisce `tokens.css` e si allinea `palette.ts` — nient'altro.
 
 ## Deploy
 

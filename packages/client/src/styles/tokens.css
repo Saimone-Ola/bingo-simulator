@@ -1,0 +1,178 @@
+/*
+ * Bingo Simulator - design tokens
+ * ---------------------------------------------------------------------------
+ * The single source of truth for every colour, size, radius, shadow and timing
+ * in the interface. Components reference these through Tailwind utilities
+ * (`bg-brand-500`, `rounded-lg`, `shadow-panel`) and never contain literal
+ * values, so the whole look can be re-skinned by editing this file alone.
+ *
+ * The product is a 3D world: the canvas provides the light and the chrome sits
+ * on top of it. The interface is therefore dark by design, not dark "mode" -
+ * there is deliberately no light variant to keep contrast predictable over
+ * arbitrary rendered backgrounds. See DESIGN.md.
+ *
+ * Fonts are system stacks on purpose. A downloaded web font is a third-party
+ * request in the critical path; any brand typeface we adopt ships self-hosted
+ * from our own bundle.
+ */
+
+@theme {
+  /* ---------------------------------------------------------------------
+   * Surfaces - indigo-tinted near-blacks. Low numbers sit further back.
+   * ------------------------------------------------------------------ */
+  --color-surface-950: #06050f; /* page background behind everything */
+  --color-surface-900: #0b0a1a; /* app background, matches the 3D clear colour */
+  --color-surface-850: #111027; /* sunken wells, inputs */
+  --color-surface-800: #16142e; /* cards, panels */
+  --color-surface-700: #1e1c3d; /* raised: menus, popovers, HUD */
+  --color-surface-600: #2a2750; /* subtle borders, dividers */
+  --color-surface-500: #3b3670; /* strong borders, focus rings on dark */
+  --color-surface-400: #565093; /* disabled chrome */
+
+  /* ---------------------------------------------------------------------
+   * Brand - the stage-light violet. 500 is the interactive default.
+   * ------------------------------------------------------------------ */
+  --color-brand-50: #f4f1ff;
+  --color-brand-100: #e5e0ff;
+  --color-brand-200: #cdc2ff;
+  --color-brand-300: #b0a0ff;
+  --color-brand-400: #9179ff;
+  --color-brand-500: #7c5cff;
+  --color-brand-600: #6540e6;
+  --color-brand-700: #4f2fc4;
+  --color-brand-800: #3b2296;
+  --color-brand-900: #281663;
+
+  /* ---------------------------------------------------------------------
+   * Accent - warm gold. Reserved for value: credits, wins, prizes, jackpots.
+   * Using it for ordinary navigation would blunt exactly the signal it is
+   * there to carry.
+   * ------------------------------------------------------------------ */
+  --color-accent-100: #fff2d6;
+  --color-accent-300: #ffd88a;
+  --color-accent-400: #ffc655;
+  --color-accent-500: #ffb020;
+  --color-accent-600: #e59200;
+  --color-accent-700: #b87000;
+
+  /* ---------------------------------------------------------------------
+   * Semantic feedback
+   * ------------------------------------------------------------------ */
+  --color-success-400: #4dd693;
+  --color-success-500: #2fbf71;
+  --color-success-600: #219a58;
+
+  --color-warning-400: #f2ba63;
+  --color-warning-500: #e8a33d;
+  --color-warning-600: #c07f1f;
+
+  --color-danger-400: #ff7b80;
+  --color-danger-500: #e5484d;
+  --color-danger-600: #c1272d;
+
+  --color-info-400: #63d8ea;
+  --color-info-500: #3ec9e0;
+  --color-info-600: #1fa3b8;
+
+  /* ---------------------------------------------------------------------
+   * Item rarity - shop, inventory, wardrobe and prize drops. One scale used
+   * everywhere so a legendary always reads the same, in a shop card or in a
+   * win banner.
+   * ------------------------------------------------------------------ */
+  --color-rarity-common: #8b8aa3;
+  --color-rarity-rare: #3e9ae0;
+  --color-rarity-epic: #a855f7;
+  --color-rarity-legendary: #ffb020;
+
+  /* ---------------------------------------------------------------------
+   * Text - contrast checked against surface-800/900.
+   * primary 15.8:1, secondary 8.4:1, muted 4.6:1 (large/secondary text only).
+   * ------------------------------------------------------------------ */
+  --color-content-primary: #f4f2ff;
+  --color-content-secondary: #b6b0d6;
+  --color-content-muted: #8d87ad;
+  --color-content-inverse: #0b0a1a;
+
+  /* ---------------------------------------------------------------------
+   * Typography
+   * ------------------------------------------------------------------ */
+  --font-display: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  /* Tabular figures matter: credit counters and ball numbers must not jitter. */
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-display: 2.25rem;
+  --text-display--line-height: 2.5rem;
+  --text-display--font-weight: 700;
+  --text-hero: 3rem;
+  --text-hero--line-height: 3.25rem;
+  --text-hero--font-weight: 700;
+
+  /* ---------------------------------------------------------------------
+   * Radii
+   * ------------------------------------------------------------------ */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+
+  /* ---------------------------------------------------------------------
+   * Elevation. Shadows are deep and soft: on a near-black surface a tight
+   * shadow is invisible, so separation comes from spread plus a hairline.
+   * ------------------------------------------------------------------ */
+  --shadow-panel: 0 20px 60px -20px rgb(0 0 0 / 0.75);
+  --shadow-raised: 0 8px 24px -12px rgb(0 0 0 / 0.8);
+  --shadow-hud: 0 4px 20px -6px rgb(0 0 0 / 0.65);
+  --shadow-glow-brand: 0 0 32px -6px color-mix(in srgb, var(--color-brand-500) 60%, transparent);
+  --shadow-glow-accent: 0 0 32px -6px color-mix(in srgb, var(--color-accent-500) 60%, transparent);
+
+  /* ---------------------------------------------------------------------
+   * Motion. Anything above `slow` starts to feel like lag in a live room.
+   * ------------------------------------------------------------------ */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1.1);
+
+  --animate-ball-pop: ball-pop 320ms var(--ease-emphasized);
+  --animate-credit-tick: credit-tick 200ms var(--ease-standard);
+
+  @keyframes ball-pop {
+    0% {
+      transform: scale(0.6);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes credit-tick {
+    0% {
+      transform: translateY(-0.15em);
+      color: var(--color-accent-300);
+    }
+    100% {
+      transform: translateY(0);
+    }
+  }
+}
+
+/*
+ * Non-Tailwind design constants. These are not utility-generating tokens, so
+ * they live outside @theme, but they belong to the same system.
+ */
+:root {
+  /* Stacking order, declared once so no component invents its own z-index. */
+  --z-world: 0;
+  --z-hud: 10;
+  --z-overlay: 20;
+  --z-modal: 30;
+  --z-toast: 40;
+
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+}

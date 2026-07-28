@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatCredits } from '@bingo/shared';
-import { Button } from '../components/ui';
+import { Button, CreditAmount, HudCard } from '../components/ui';
 import { SceneBoundary } from '../components/SceneBoundary';
 import { useAuthStore } from '../store/auth';
 
@@ -27,10 +26,14 @@ export default function HubPage() {
 
   return (
     <div className="relative h-full w-full">
+      <a href="#hud" className="skip-link rounded-md bg-surface-700 px-4 py-2 text-sm">
+        Salta al pannello giocatore
+      </a>
+
       <SceneBoundary>
         <Suspense
           fallback={
-            <div className="grid h-full place-items-center text-(--color-text-muted)">
+            <div className="grid h-full place-items-center text-content-muted">
               Caricamento del mondo…
             </div>
           }
@@ -39,21 +42,26 @@ export default function HubPage() {
         </Suspense>
       </SceneBoundary>
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-4">
-        <div className="pointer-events-auto rounded-(--radius-lg) border border-(--color-border-subtle) bg-(--color-surface-raised)/85 px-4 py-3 backdrop-blur">
-          <p className="text-xs uppercase tracking-wide text-(--color-text-muted)">Giocatore</p>
+      <header
+        id="hud"
+        className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-4"
+        style={{ zIndex: 'var(--z-hud)' }}
+      >
+        <HudCard className="pointer-events-auto">
+          <p className="text-2xs uppercase tracking-wide text-content-muted">Giocatore</p>
           <p className="font-semibold">{user?.displayName ?? '—'}</p>
-          <p className="mt-1 text-sm text-(--color-accent-300)">
-            {formatCredits(balance)} crediti
+          <p className="mt-1">
+            <CreditAmount value={balance} />
           </p>
-        </div>
+        </HudCard>
 
         <div className="pointer-events-auto flex gap-2">
-          <Button variant="ghost" onClick={() => setShowStats((value) => !value)}>
+          <Button variant="ghost" size="sm" onClick={() => setShowStats((value) => !value)}>
             {showStats ? 'Nascondi FPS' : 'Mostra FPS'}
           </Button>
           <Button
             variant="ghost"
+            size="sm"
             onClick={() => {
               void logout().then(() => navigate('/', { replace: true }));
             }}
@@ -63,8 +71,11 @@ export default function HubPage() {
         </div>
       </header>
 
-      <footer className="pointer-events-none absolute inset-x-0 bottom-0 p-4">
-        <p className="mx-auto max-w-2xl rounded-(--radius-md) bg-(--color-surface-sunken)/80 px-4 py-2 text-center text-xs text-(--color-text-muted) backdrop-blur">
+      <footer
+        className="pointer-events-none absolute inset-x-0 bottom-0 p-4"
+        style={{ zIndex: 'var(--z-hud)' }}
+      >
+        <p className="mx-auto max-w-2xl rounded-md bg-surface-950/80 px-4 py-2 text-center text-xs text-content-muted backdrop-blur">
           Fase 0: anteprima tecnica. Avatar, movimento multiplayer e chat arrivano nella fase 1.
           Crediti virtuali, nessun denaro reale.
         </p>

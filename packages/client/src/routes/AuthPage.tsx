@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { loginSchema, registerSchema } from '@bingo/shared';
 import { Button, Field, Panel, ResponsiblePlayNotice } from '../components/ui';
 import { useAuthStore } from '../store/auth';
@@ -21,6 +21,12 @@ export default function AuthPage() {
   const clearError = useAuthStore((state) => state.clearError);
   const serverError = useAuthStore((state) => state.error);
   const busy = useAuthStore((state) => state.status === 'loading');
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    setFieldErrors({});
+    clearError();
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -66,20 +72,18 @@ export default function AuthPage() {
   return (
     <main className="mx-auto flex min-h-full w-full max-w-md flex-col justify-center gap-6 p-6">
       <header className="text-center">
-        <h1 className="font-(family-name:--font-display) text-3xl font-bold text-(--color-brand-100)">
-          Bingo Simulator
-        </h1>
-        <p className="mt-2 text-sm text-(--color-text-secondary)">
+        <h1 className="font-display text-display text-brand-100">Bingo Simulator</h1>
+        <p className="mt-2 text-sm text-content-secondary">
           Entra nel mondo 3D, gioca a bingo e alle slot create dalla community.
         </p>
       </header>
 
       <Panel>
-        <div className="mb-5 flex gap-2" role="tablist">
-          <TabButton active={mode === 'login'} onClick={() => setMode('login')}>
+        <div className="mb-5 flex gap-2" role="tablist" aria-label="Accesso">
+          <TabButton active={mode === 'login'} onClick={() => switchMode('login')}>
             Accedi
           </TabButton>
-          <TabButton active={mode === 'register'} onClick={() => setMode('register')}>
+          <TabButton active={mode === 'register'} onClick={() => switchMode('register')}>
             Crea account
           </TabButton>
         </div>
@@ -114,13 +118,13 @@ export default function AuthPage() {
           />
 
           {mode === 'register' && (
-            <label className="flex items-start gap-2 text-sm text-(--color-text-secondary)">
-              <input type="checkbox" name="ageAcknowledged" className="mt-1" />
+            <label className="flex items-start gap-2 text-sm text-content-secondary">
+              <input type="checkbox" name="ageAcknowledged" className="mt-1 accent-brand-500" />
               <span>
                 Dichiaro di avere almeno 18 anni e di aver capito che si tratta di un gioco
                 simulato senza denaro reale.
                 {fieldErrors.ageAcknowledged && (
-                  <em className="mt-1 block not-italic text-(--color-danger-500)">
+                  <em className="mt-1 block not-italic text-danger-400">
                     {fieldErrors.ageAcknowledged}
                   </em>
                 )}
@@ -129,18 +133,27 @@ export default function AuthPage() {
           )}
 
           {serverError && (
-            <p role="alert" className="text-sm text-(--color-danger-500)">
+            <p
+              role="alert"
+              className="rounded-md border border-danger-600 bg-danger-600/15 px-3 py-2 text-sm text-danger-400"
+            >
               {serverError}
             </p>
           )}
 
-          <Button type="submit" loading={busy}>
+          <Button type="submit" loading={busy} size="lg">
             {mode === 'login' ? 'Accedi' : 'Crea account'}
           </Button>
         </form>
       </Panel>
 
       <ResponsiblePlayNotice />
+
+      <p className="text-center">
+        <Link to="/stile" className="text-2xs uppercase tracking-wide text-content-muted underline">
+          Guida di stile
+        </Link>
+      </p>
     </main>
   );
 }
@@ -167,10 +180,10 @@ function TabButton({
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className={`flex-1 rounded-(--radius-md) px-3 py-2 text-sm font-semibold transition-colors ${
+      className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors duration-150 ${
         active
-          ? 'bg-(--color-surface-overlay) text-(--color-text-primary)'
-          : 'text-(--color-text-muted) hover:text-(--color-text-secondary)'
+          ? 'bg-surface-700 text-content-primary'
+          : 'text-content-muted hover:text-content-secondary'
       }`}
     >
       {children}
