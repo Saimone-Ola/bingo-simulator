@@ -1,28 +1,34 @@
-import type { FastifyPluginAsync } from 'fastify';
+import { Router } from 'express';
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { ledgerEntries } from '../../db/schema';
 import { AppError } from '../../errors';
 import { getWalletState } from '../../services/ledger';
+import { asyncRoute, requireAuth } from '../middleware/auth';
 
 /**
  * Read-only wallet endpoints. There is deliberately no route that writes a
  * balance: credits only ever move as a side effect of a game action resolved
  * by the server.
  */
-const walletRoutes: FastifyPluginAsync = async (app) => {
-  app.addHook('preHandler', app.requireAuth);
+const walletRoutes: Router = Router();
 
-  app.get('/balance', async (request, reply) => {
+walletRoutes.use(requireAuth);
+
+walletRoutes.get(
+  '/balance',
+  asyncRoute(async (request, response) => {
     if (!request.auth) throw AppError.unauthorized();
     const state = await getWalletState(db, request.auth.userId);
-    return reply.send({ balance: state.balance, entryCount: state.entryCount });
-  });
+    response.json({ balance: state.balance, entryCount: state.entryCount });
+  }),
+);
 
-  app.get('/statement', async (request, reply) => {
+walletRoutes.get(
+  '/statement',
+  asyncRoute(async (request, response) => {
     if (!request.auth) throw AppError.unauthorized();
-    const { limit } = request.query as { limit?: string };
-    const take = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    const take = Math.min(Math.max(Number(request.query.limit) || 50, 1), 200);
 
     const entries = await db
       .select({
@@ -39,8 +45,8 @@ const walletRoutes: FastifyPluginAsync = async (app) => {
       .orderBy(desc(ledgerEntries.sequence))
       .limit(take);
 
-    return reply.send({ entries });
-  });
-};
+    response.json({ entries });
+  }),
+);
 
 export default walletRoutes;

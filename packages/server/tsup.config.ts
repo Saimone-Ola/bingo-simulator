@@ -1,7 +1,9 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // The migrator ships alongside the server so the platform can run it as a
+  // pre-deploy step against the same bundle it is about to start.
+  entry: ['src/index.ts', 'src/db/migrate.ts'],
   format: ['esm'],
   target: 'node22',
   platform: 'node',

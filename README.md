@@ -34,6 +34,9 @@ bingo-simulator/          <- radice del repository
 │   ├── server/     API Fastify, Drizzle + PostgreSQL, auth, ledger  (+ Colyseus da fase 1)
 │   └── client/     React + Vite + React Three Fiber, Tailwind, Zustand
 ├── scripts/        utility (generazione segreti)
+├── Dockerfile      immagine del server di gioco
+├── render.yaml     blueprint Render (servizio + database)
+├── DEPLOY.md       messa online, passo per passo
 ├── DESIGN.md       design system: token, componenti, regole
 ├── pnpm-workspace.yaml
 └── vercel.json     deploy del solo client
@@ -134,14 +137,16 @@ Utenze create dal seed (sovrascrivibili con `SEED_ADMIN_EMAIL` ecc.):
 pnpm dev
 ```
 
-API su `:3001`, **hub Colyseus su `:2567`**, client su `:5173`. Apri
+API, matchmaking e hub sulla **stessa porta** `:3001`; client su `:5173`. Apri
 <http://localhost:5173>, crea un account e atterri nella piazza 3D: WASD per
 muoverti, Shift per correre, trascina per girare la camera, chat ed emote in
 basso.
 
-> L'hub ascolta su una porta propria e non su quella dell'API. Colyseus registra
-> le sue rotte di matchmaking con `prependListener('request')` e, senza una app
-> Express a cui delegare, risponderebbe a *ogni* richiesta — API compresa.
+> L'API è un'app Express montata dentro Colyseus, non un server a sé. Colyseus
+> registra le sue rotte con `prependListener('request')` e, senza un'app a cui
+> delegare, risponderebbe a *ogni* richiesta; dandogliela, il matchmaking va a
+> Colyseus e tutto il resto all'API. Una porta sola è anche l'unica cosa che un
+> PaaS espone per servizio.
 
 ### Se qualcosa non parte
 
@@ -302,14 +307,18 @@ si sostituisce `tokens.css` e si allinea `palette.ts` — nient'altro.
 
 ## Deploy
 
-- **Client → Vercel.** Root directory del progetto: la radice del repo. Il
-  `vercel.json` builda `@bingo/client` e serve `packages/client/dist` con
-  rewrite SPA. Variabili: `VITE_API_URL`, `VITE_WS_URL`.
-- **Server → Render / Fly.io / Railway** (serve WebSocket persistenti, quindi
-  non Vercel). `pnpm --filter @bingo/server build` produce `dist/index.js`,
-  avvio con `node dist/index.js`. Variabili: quelle di `.env.example`.
-- **Database → Neon.** Le migrazioni vanno eseguite sull'endpoint *unpooled*
-  (`DATABASE_URL_UNPOOLED`); il pooler non regge il lock del migratore.
+Istruzioni complete e verificate in **[DEPLOY.md](DEPLOY.md)**. In breve:
+
+- **Server → Render / Fly.io / Railway.** API, matchmaking e WebSocket stanno
+  su **una sola porta**, quindi è un servizio solo. Il repo contiene già
+  `Dockerfile` e `render.yaml` (Blueprint: colleghi il repo e Render provisiona
+  servizio e database). Non può stare su Vercel: le funzioni serverless non
+  tengono aperte le connessioni WebSocket.
+- **Client → Vercel.** Root directory: la radice del repo. Unica variabile:
+  `VITE_API_URL` con l'URL del server — il client ricava da sola l'endpoint
+  `wss://`.
+- **Database → Neon** (o il Postgres del provider). Le migrazioni girano
+  sull'endpoint *unpooled*; il pooler non regge il lock del migratore.
 
 ## Vincoli di prodotto
 

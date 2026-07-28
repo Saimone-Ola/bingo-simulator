@@ -1,22 +1,26 @@
 import { Server as ColyseusServer, WebSocketTransport } from 'colyseus';
 import { ROOM_NAMES } from '@bingo/shared';
 import { env } from '../env';
+import { mountApi } from '../http/app';
+import { configureRealtimeCors } from './cors';
 import { HubRoom } from './hubRoom';
 
 /**
- * The realtime server listens on its own port, separate from the REST API.
+ * The whole server: REST API, matchmaking and WebSocket rooms, on one port.
  *
- * Sharing Fastify's HTTP listener was the first attempt and does not work:
  * Colyseus binds its matchmaking routes with `prependListener('request')` and,
- * with no Express app to delegate to, its handler answers *every* request -
- * the whole API included. Matchmaking is HTTP (`POST /matchmake/...`) before
- * it is ever a WebSocket, so the transport alone is not enough either; without
- * those routes the client gets a 404 and never reaches the socket.
+ * without an Express app to fall through to, answers every request on that
+ * server. Giving it one via the `express` option inverts that: matchmaking
+ * paths go to Colyseus, everything else reaches the API.
  *
- * Two ports is also what the platforms this deploys to expect: Render, Fly and
- * Railway all route a dedicated service to a dedicated port.
+ * One port matters because a PaaS (Render, Fly, Railway) exposes exactly one
+ * port per service. Two listeners would mean two services, two URLs, two cold
+ * starts and a second CORS configuration to keep in sync.
  */
-export function startRealtime(): ColyseusServer {
+export function createGameServer(): ColyseusServer {
+  // Must run before the router is bound: Colyseus answers preflights itself.
+  configureRealtimeCors();
+
   const gameServer = new ColyseusServer({
     transport: new WebSocketTransport({
       // Drop a socket that has missed three keepalives: a half-open connection
@@ -24,11 +28,18 @@ export function startRealtime(): ColyseusServer {
       pingInterval: 6_000,
       pingMaxRetries: 3,
     }),
+    express: (app) => {
+      mountApi(app);
+    },
   });
 
   gameServer.define(ROOM_NAMES.hub, HubRoom);
 
-  void gameServer.listen(env.GAME_PORT, env.HOST);
+  return gameServer;
+}
 
+export async function startGameServer(): Promise<ColyseusServer> {
+  const gameServer = createGameServer();
+  await gameServer.listen(env.PORT, env.HOST);
   return gameServer;
 }

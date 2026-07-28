@@ -76,16 +76,24 @@ export type ConnectionStatus =
 /** Where the room's reconnection token is parked across a page reload. */
 const RECONNECT_KEY = 'bingo.hub.reconnection';
 
+/**
+ * Where the hub lives.
+ *
+ * The server puts the API, matchmaking and the WebSocket upgrade on one port,
+ * so this is the API origin with the scheme swapped - no separate host and no
+ * hardcoded port. Behind TLS that means `wss://`, which is not optional: a
+ * browser on an https page refuses to open a plaintext ws:// socket.
+ *
+ * `VITE_WS_URL` still overrides, for the case where the game server sits
+ * behind a different hostname than the API.
+ */
 function wsEndpoint(): string {
   const configured = import.meta.env.VITE_WS_URL as string | undefined;
-  if (configured) return configured;
+  if (configured) return configured.replace(/\/$/, '');
 
-  // The hub listens on its own port (Colyseus owns the HTTP routes of whatever
-  // server it binds to), so fall back to the API host with the game port.
   const api = (import.meta.env.VITE_API_URL as string | undefined) ?? window.location.origin;
   const url = new URL(api);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  url.port = '2567';
   return url.toString().replace(/\/$/, '');
 }
 

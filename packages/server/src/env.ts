@@ -1,16 +1,21 @@
-import 'dotenv/config';
 import { z } from 'zod';
 
 /**
  * Fail fast on misconfiguration. A server that boots with a missing JWT secret
  * is worse than a server that refuses to boot.
+ *
+ * Nothing here loads a .env file. `dotenv` is CommonJS and calls `require`, so
+ * bundling it into the ESM output produced a server that died on start with
+ * "Dynamic require of fs is not supported" - in production only, where the
+ * bundle is what runs. Local processes get their .env through Node's own
+ * `--env-file-if-exists` flag instead (see the package scripts); hosted ones
+ * get real environment variables from the platform.
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('0.0.0.0'),
+  /** API, matchmaking and WebSockets all share this port. See realtime/index.ts. */
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
-  /** Colyseus listens separately: it owns its own HTTP routes. See realtime/index.ts. */
-  GAME_PORT: z.coerce.number().int().min(1).max(65535).default(2567),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
@@ -21,6 +26,10 @@ const envSchema = z.object({
   AUTH_ACCESS_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
   AUTH_REFRESH_TTL_SECONDS: z.coerce.number().int().min(3600).default(2_592_000),
 
+  /**
+   * Comma-separated browser origins allowed to call the API. Empty means
+   * "reflect the request origin", which is only ever acceptable in development.
+   */
   CLIENT_ORIGINS: z.string().default('http://localhost:5173'),
 
   WELCOME_BONUS_CREDITS: z.coerce.number().int().min(0).default(1000),
