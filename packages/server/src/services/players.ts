@@ -33,7 +33,9 @@ const DEFAULT_APPEARANCE: PlayerProfile['appearance'] = {
   hairStyle: 'short',
   hairColor: '#2b2118',
   shirtColor: '#7c5cff',
-  pantsColor: '#2a2750',
+  // Deliberately lighter than surface-600: the first draft used the border
+  // token and the legs vanished against the plaza floor.
+  pantsColor: '#4a4585',
   heightCm: 175,
 };
 

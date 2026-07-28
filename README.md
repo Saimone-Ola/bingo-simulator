@@ -14,7 +14,7 @@ in denaro reale, nessun riferimento a marchi di casinò esistenti.
 | Fase | Contenuto | Stato |
 |---|---|---|
 | 0 | Monorepo, TypeScript, Neon + migrazioni, auth, ledger, deploy | ✅ fatto |
-| 1 | Hub 3D, avatar, movimento multiplayer Colyseus, chat | ⬜ |
+| 1 | Hub 3D, avatar, movimento multiplayer Colyseus, chat | ✅ fatto |
 | 2 | Sala bingo funzionante end-to-end | ⬜ |
 | 3 | Sale create dagli utenti, regole, codice privato, inviti | ⬜ |
 | 4 | Slot giocabili + editor con calcolo RTP | ⬜ |
@@ -134,9 +134,14 @@ Utenze create dal seed (sovrascrivibili con `SEED_ADMIN_EMAIL` ecc.):
 pnpm dev
 ```
 
-API su `:3001`, client su `:5173`. Apri <http://localhost:5173>, crea un account
-e atterri nell'hub (in fase 0 una scena segnaposto che verifica la pipeline 3D
-end-to-end).
+API su `:3001`, **hub Colyseus su `:2567`**, client su `:5173`. Apri
+<http://localhost:5173>, crea un account e atterri nella piazza 3D: WASD per
+muoverti, Shift per correre, trascina per girare la camera, chat ed emote in
+basso.
+
+> L'hub ascolta su una porta propria e non su quella dell'API. Colyseus registra
+> le sue rotte di matchmaking con `prependListener('request')` e, senza una app
+> Express a cui delegare, risponderebbe a *ogni* richiesta — API compresa.
 
 ### Se qualcosa non parte
 
@@ -153,6 +158,7 @@ end-to-end).
 | Comando | Cosa fa |
 |---|---|
 | `pnpm dev` | API + client in watch |
+| `pnpm --filter @bingo/server load:hub -- --bots 19` | riempie l'hub di giocatori sintetici per profilare il client |
 | `pnpm secrets` | genera i due segreti JWT |
 | `pnpm build` | build di produzione dei tre pacchetti |
 | `pnpm typecheck` | `tsc --noEmit` su tutto il workspace |
@@ -180,10 +186,16 @@ I test che toccano il database si auto-escludono senza `TEST_DATABASE_URL`, cos�
 - 20 addebiti simultanei su un saldo che ne copre 5 → esattamente 5 passano;
 - idempotenza sotto retry storm: 10 tentativi, un solo accredito;
 - `UPDATE`/`DELETE` su `ledger_entries` rifiutati **dal database**;
-- nessun dato sensibile nei log quando una query fallisce.
+- nessun dato sensibile nei log quando una query fallisce;
+- **20 client simultanei** nella stessa sala, tutti in movimento, senza che
+  nessuno superi la velocità di corsa;
+- un flusso di input a 4x il tick rate non guadagna un centimetro;
+- sweep di collisione su tutta la piazza: nessun punto lascia dentro la
+  geometria;
+- il filtro testi non inciampa su "analisi", "assistente", "costante".
 
 Ancora da scrivere (fasi successive): verifica vincita su tutti i pattern
-bingo, simulazione di 100.000 spin per l'RTP, tenuta della sala con 20 client.
+bingo, simulazione di 100.000 spin per l'RTP.
 
 Attenzione: `ledger_entries` è append-only, quindi i test di integrità lasciano
 le loro righe nel database. Puntali su un branch Neon usa-e-getta.

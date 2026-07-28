@@ -14,7 +14,8 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
-    "db:check": "tsx scripts/check-ledger-integrity.ts"
+    "db:check": "tsx scripts/check-ledger-integrity.ts",
+    "load:hub": "tsx scripts/load-hub.ts"
   },
   "dependencies": {
     "@bingo/shared": "workspace:*",
@@ -31,6 +32,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@colyseus/sdk": "^0.17.43",
     "@colyseus/testing": "^0.17.11",
     "@types/node": "^22.15.0",
     "dotenv": "^17.4.2",
