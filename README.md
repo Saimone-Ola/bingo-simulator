@@ -317,8 +317,10 @@ Istruzioni complete e verificate in **[DEPLOY.md](DEPLOY.md)**. In breve:
 - **Client → Vercel.** Root directory: la radice del repo. Unica variabile:
   `VITE_API_URL` con l'URL del server — il client ricava da sola l'endpoint
   `wss://`.
-- **Database → Neon** (o il Postgres del provider). Le migrazioni girano
-  sull'endpoint *unpooled*; il pooler non regge il lock del migratore.
+- **Database → già creato**: progetto Supabase `bingo-simulator`
+  (`retshssatcmgehmnngsd`, Francoforte, Postgres 17, 0 €/mese). Le migrazioni
+  girano sull'endpoint *session*; il transaction pooler non regge il lock del
+  migratore. Dettagli e limiti del piano free in [DEPLOY.md](DEPLOY.md).
 
 ## Vincoli di prodotto
 
