@@ -10,6 +10,7 @@ import {
   type TeleportAppliedPayload,
   type WelcomePayload,
 } from '@bingo/shared';
+import { wsOrigin } from '../lib/apiOrigin';
 
 /**
  * The single connection to the hub.
@@ -91,10 +92,7 @@ function wsEndpoint(): string {
   const configured = import.meta.env.VITE_WS_URL as string | undefined;
   if (configured) return configured.replace(/\/$/, '');
 
-  const api = (import.meta.env.VITE_API_URL as string | undefined) ?? window.location.origin;
-  const url = new URL(api);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  return url.toString().replace(/\/$/, '');
+  return wsOrigin();
 }
 
 let room: HubRoom | null = null;

@@ -101,7 +101,26 @@ Alternative equivalenti, stesso `Dockerfile`:
 ## 3. Front-end → Vercel
 
 1. <https://vercel.com/new> → importa `bingo-simulator`
-2. **Root Directory**: la radice (il `vercel.json` fa il resto)
+2. **Root Directory: lasciala sulla radice** (`./`)
+
+   > ⚠️ È il punto in cui il primo deploy è fallito. L'import di Vercel
+   > riconosce l'app Vite dentro `packages/client` e **propone di spostare lì
+   > la Root Directory**. Se accetti, Vercel smette di leggere il `vercel.json`
+   > della radice e il build finisce con
+   > `No Output Directory named "dist" found`.
+   >
+   > Per correggerlo su un progetto già creato:
+   > **Settings → Build & Deployment → Root Directory** → svuota il campo
+   > (deve tornare `./`) → **Save** → **Deployments → … → Redeploy**.
+   >
+   > Tenerla sulla radice non è pignoleria: `@bingo/client` importa
+   > `@bingo/shared` dal sorgente, e con la Root Directory su
+   > `packages/client` Vercel considera "non rilevanti" le modifiche a
+   > `packages/shared` e salta il rebuild.
+   >
+   > Se preferisci comunque tenerla su `packages/client`, funziona lo stesso:
+   > c'è un `packages/client/vercel.json` apposta. Perdi solo il rebuild
+   > automatico sulle modifiche a `packages/shared`.
 3. Variabile d'ambiente:
 
    | Nome | Valore |
@@ -111,6 +130,10 @@ Alternative equivalenti, stesso `Dockerfile`:
    È l'unica che serve: il client ricava da sé l'endpoint WebSocket
    sostituendo `https` con `wss`, perché server, API e matchmaking stanno sulla
    stessa porta.
+
+   Va impostata **prima** del build: Vite la incorpora nel bundle, quindi
+   aggiungerla dopo richiede un redeploy. Senza, il client parla con la propria
+   origine Vercel — che non ha nessuna API — e ogni chiamata fallisce.
 4. **Deploy**
 
 ---
@@ -136,7 +159,9 @@ Apri l'URL Vercel, crea un account e controlla che in alto **non** compaia
 
 | Sintomo | Causa quasi certa |
 |---|---|
+| Build Vercel: `No Output Directory named "dist" found` | Root Directory spostata su `packages/client` — vedi il riquadro al passo 3 |
 | "Connessione persa" subito | `CLIENT_ORIGINS` sbagliata o con slash finale |
+| Le chiamate partono verso l'URL Vercel stesso | Manca `VITE_API_URL`: aggiungila e rifai il deploy |
 | Registrazione fallisce con errore server | `DATABASE_URL` errata, o manca `?sslmode=require` |
 | Deploy fallisce nel pre-deploy | `DATABASE_URL_UNPOOLED` contiene ancora `-pooler` |
 | Tutto lento al primo accesso | Istanza free che si sveglia: ~50s |

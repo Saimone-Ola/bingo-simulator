@@ -1,6 +1,7 @@
 import { isApiErrorBody, type ApiErrorCode, type AuthResponse } from '@bingo/shared';
+import { apiOrigin } from './apiOrigin';
 
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
+const API_URL = apiOrigin();
 
 /** A failed API call, carrying the server's stable error code. */
 export class ApiError extends Error {
