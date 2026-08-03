@@ -27,7 +27,7 @@ interface BingoRoomSceneProps {
 const MARKER_COLORS = ['#ef4444', '#2563eb', '#16a34a', '#7c3aed'] as const;
 const CELL_WIDTH = 0.33;
 const CELL_HEIGHT = 0.26;
-const CARD_Y = 1.08;
+const CARD_Y = 1.26;
 const CARD_Z = 3.35;
 
 type Vector3Tuple = [number, number, number];
@@ -181,7 +181,7 @@ function SeatedCameraController({
       pitchTarget.current = THREE.MathUtils.clamp(pitchTarget.current, -0.88, 0.42);
     } else {
       yawTarget.current = 0;
-      pitchTarget.current = -0.41;
+      pitchTarget.current = -0.34;
     }
 
     const damping = reducedMotion ? 30 : 11;
