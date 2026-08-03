@@ -34,6 +34,15 @@ const CELL_WIDTH = 0.33;
 const CELL_HEIGHT = 0.26;
 const CARD_Y = 1.26;
 const CARD_Z = 3.35;
+const DEFAULT_APPEARANCE: AvatarAppearance = {
+  bodyType: 'neutral',
+  skinTone: '#e0b49a',
+  hairStyle: 'short',
+  hairColor: '#2b2118',
+  shirtColor: '#7c5cff',
+  pantsColor: '#4a4585',
+  heightCm: 175,
+};
 
 type Vector3Tuple = [number, number, number];
 
@@ -395,7 +404,7 @@ function BackgroundTable({
       </group>
       {player && (
         <ProceduralCharacter
-          appearance={player.appearance}
+          appearance={player.appearance ?? DEFAULT_APPEARANCE}
           state={guestAnimation(player, currentNumber, drawnCount)}
           personality={personality}
           position={[0, 0.05, -0.35]}
@@ -765,15 +774,7 @@ function Scene({
 }: BingoRoomSceneProps) {
   const drawn = useMemo(() => new Set(drawnNumbers), [drawnNumbers]);
   const myAppearance =
-    players.find((player) => player.sessionId === mySessionId)?.appearance ?? {
-      bodyType: 'neutral',
-      skinTone: '#e0b49a',
-      hairStyle: 'short',
-      hairColor: '#2b2118',
-      shirtColor: '#7c5cff',
-      pantsColor: '#4a4585',
-      heightCm: 175,
-    };
+    players.find((player) => player.sessionId === mySessionId)?.appearance ?? DEFAULT_APPEARANCE;
 
   return (
     <>
