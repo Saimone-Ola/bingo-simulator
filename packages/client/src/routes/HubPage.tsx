@@ -29,7 +29,7 @@ const CONNECTION_COPY: Record<string, string> = {
 export default function HubPage() {
   const navigate = useNavigate();
   const [showStats, setShowStats] = useState(false);
-  const [showChat, setShowChat] = useState(true);
+  const [showChat, setShowChat] = useState(false);
   const [touchDevice, setTouchDevice] = useState(false);
 
   const user = useAuthStore((state) => state.user);
@@ -157,15 +157,16 @@ export default function HubPage() {
         </HudCard>
 
         <div className="pointer-events-auto flex gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setShowChat((value) => !value)}>
+          <Button variant="ghost" size="sm" className="bg-surface-900/85 shadow-hud backdrop-blur-xl" onClick={() => setShowChat((value) => !value)}>
             <span aria-hidden="true">◈</span> {showChat ? 'Nascondi chat' : 'Chat'}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowStats((value) => !value)}>
+          <Button variant="ghost" size="sm" className="bg-surface-900/85 shadow-hud backdrop-blur-xl" onClick={() => setShowStats((value) => !value)}>
             <span aria-hidden="true">⌁</span> {showStats ? 'Nascondi FPS' : 'FPS'}
           </Button>
           <Button
             variant="ghost"
             size="sm"
+            className="bg-surface-900/85 shadow-hud backdrop-blur-xl"
             onClick={() => {
               void logout().then(() => navigate('/', { replace: true }));
             }}
