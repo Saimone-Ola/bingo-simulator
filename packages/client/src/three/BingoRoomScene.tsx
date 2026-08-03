@@ -412,6 +412,7 @@ function BackgroundTable({
           scale={0.72}
           phase={phase}
           reducedMotion={reducedMotion}
+          seated
         />
       )}
     </group>
