@@ -2,7 +2,7 @@ import { matchMaker } from 'colyseus';
 import { env } from '../env';
 
 const VERCEL_PROJECT_HOST =
-  /^bingo-simulator-client-[a-z0-9-]+-saimone-olas-projects\\.vercel\\.app$/;
+  /^bingo-simulator-client-[a-z0-9-]+-saimone-olas-projects\.vercel\.app$/;
 
 function isAllowed(origin: string, configured: Set<string>): boolean {
   if (configured.has(origin)) return true;
