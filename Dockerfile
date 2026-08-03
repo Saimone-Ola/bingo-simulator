@@ -53,7 +53,7 @@ WORKDIR /app
 
 # Never run the game server as root.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+ && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd --system --gid 1001 bingo \
  && useradd --system --uid 1001 --gid bingo bingo
@@ -64,7 +64,8 @@ COPY --from=build --chown=bingo:bingo /app/packages/server/drizzle ./drizzle
 # Install only what the bundle actually needs. Copying node_modules from the
 # build stage would drag tsup, vitest, drizzle-kit and the whole TypeScript
 # toolchain into the runtime image.
-RUN npm install --omit=dev --no-audit --no-fund \
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:" \
+ && npm install --omit=dev --no-audit --no-fund \
  && npm cache clean --force
 
 USER bingo
