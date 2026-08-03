@@ -30,6 +30,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Use HTTPS for public GitHub dependencies
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
       - run: pnpm install --frozen-lockfile
       - name: Type checking
         run: pnpm typecheck
