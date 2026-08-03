@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
-import { RoundedBox, Text } from '@react-three/drei';
+import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import type { BingoPlayerSummary, ItalianBingoCard } from '@bingo/shared';
 
@@ -29,6 +29,58 @@ const CELL_WIDTH = 0.33;
 const CELL_HEIGHT = 0.26;
 const CARD_Y = 0.9;
 const CARD_Z = 3.02;
+
+type Vector3Tuple = [number, number, number];
+
+function CanvasText({
+  text,
+  position = [0, 0, 0],
+  rotation = [0, 0, 0],
+  color = '#ffffff',
+  width = 1,
+  height = 0.25,
+  fontScale = 0.56,
+  renderOrder = 2,
+}: {
+  text: string;
+  position?: Vector3Tuple;
+  rotation?: Vector3Tuple;
+  color?: string;
+  width?: number;
+  height?: number;
+  fontScale?: number;
+  renderOrder?: number;
+}) {
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 256;
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = color;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.font = \`800 \${Math.round(canvas.height * fontScale)}px Inter, system-ui, sans-serif\`;
+      context.fillText(text, canvas.width / 2, canvas.height / 2, canvas.width * 0.94);
+    }
+    const next = new THREE.CanvasTexture(canvas);
+    next.colorSpace = THREE.SRGBColorSpace;
+    next.minFilter = THREE.LinearMipmapLinearFilter;
+    next.magFilter = THREE.LinearFilter;
+    next.anisotropy = 4;
+    return next;
+  }, [color, fontScale, text]);
+
+  useEffect(() => () => texture.dispose(), [texture]);
+
+  return (
+    <mesh position={position} rotation={rotation} renderOrder={renderOrder}>
+      <planeGeometry args={[width, height]} />
+      <meshBasicMaterial map={texture} transparent toneMapped={false} depthWrite={false} />
+    </mesh>
+  );
+}
 
 function SeatedCameraController({
   focusCard,
@@ -297,15 +349,9 @@ function Stage({
         <RoundedBox args={[5.8, 2.1, 0.18]} radius={0.14} smoothness={3}>
           <meshStandardMaterial color="#100c1b" metalness={0.45} roughness={0.3} emissive="#1d1233" emissiveIntensity={0.45} />
         </RoundedBox>
-        <Text position={[0, 0.62, 0.12]} fontSize={0.24} color="#c4b5fd" anchorX="center" anchorY="middle">
-          NUMERO ESTRATTO
-        </Text>
-        <Text position={[0, -0.08, 0.13]} fontSize={0.86} color="#ffd166" anchorX="center" anchorY="middle">
-          {currentNumber?.toString() ?? '—'}
-        </Text>
-        <Text position={[0, -0.78, 0.12]} fontSize={0.18} color="#8ee8de" anchorX="center" anchorY="middle">
-          {drawnCount} / 90
-        </Text>
+        <CanvasText text="NUMERO ESTRATTO" position={[0, 0.62, 0.12]} color="#c4b5fd" width={3.2} height={0.34} fontScale={0.42} />
+        <CanvasText text={currentNumber?.toString() ?? '—'} position={[0, -0.08, 0.13]} color="#ffd166" width={2.1} height={1.05} fontScale={0.78} />
+        <CanvasText text={\`\${drawnCount} / 90\`} position={[0, -0.78, 0.12]} color="#8ee8de" width={2.2} height={0.28} fontScale={0.46} />
       </group>
 
       <group position={[-2.25, 1.18, -7.82]}>
@@ -378,9 +424,7 @@ function PlayerTable() {
         <RoundedBox args={[0.74, 0.09, 0.48]} radius={0.05} smoothness={2}>
           <meshStandardMaterial color="#d5aa5b" roughness={0.5} />
         </RoundedBox>
-        <Text position={[0, 0.06, 0.06]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.1} color="#38210f" anchorX="center" anchorY="middle">
-          PORTAFORTUNA
-        </Text>
+        <CanvasText text="PORTAFORTUNA" position={[0, 0.06, 0.06]} rotation={[-Math.PI / 2, 0, 0]} color="#38210f" width={0.62} height={0.12} fontScale={0.42} />
       </group>
     </group>
   );
@@ -492,9 +536,7 @@ function ItalianCard3D({
       <RoundedBox args={[3.35, 1.28, 0.055]} radius={0.06} smoothness={2} position={[0, 0.02, -0.02]} receiveShadow castShadow>
         <meshStandardMaterial color="#efe4c8" roughness={0.72} />
       </RoundedBox>
-      <Text position={[0, 0.53, 0.045]} fontSize={0.13} color="#5e4426" anchorX="center" anchorY="middle">
-        CARTELLA {cardIndex + 1} · BINGO ITALIANO
-      </Text>
+      <CanvasText text={\`CARTELLA \${cardIndex + 1} · BINGO ITALIANO\`} position={[0, 0.53, 0.045]} color="#5e4426" width={2.8} height={0.2} fontScale={0.48} />
 
       {card.cells.map((number, cellIndex) => {
         const row = Math.floor(cellIndex / 9);
@@ -533,16 +575,15 @@ function ItalianCard3D({
               />
             </mesh>
             {number !== null && (
-              <Text
+              <CanvasText
+                text={number.toString()}
                 position={[0, 0, 0.028]}
-                fontSize={0.135}
                 color="#2b2115"
-                anchorX="center"
-                anchorY="middle"
+                width={0.25}
+                height={0.17}
+                fontScale={0.62}
                 renderOrder={4}
-              >
-                {number.toString()}
-              </Text>
+              />
             )}
             {isMarked && (
               <mesh position={[0, 0, 0.052]} renderOrder={5}>
