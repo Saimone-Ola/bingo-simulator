@@ -31,10 +31,17 @@ export default function PoiMenu() {
             className={`rounded-lg px-3 py-2 text-left text-xs font-bold transition-all ${
               unlocked
                 ? 'border border-transparent bg-surface-800/55 text-content-secondary hover:-translate-x-1 hover:border-brand-400/30 hover:bg-brand-500/15 hover:text-content-primary'
-                : 'cursor-not-allowed border border-transparent text-content-muted opacity-40'
+                : 'cursor-not-allowed border border-surface-600/50 bg-surface-950/25 text-content-secondary opacity-75'
             }`}
           >
-            {poi.label}
+            <span className="flex items-center justify-between gap-3">
+              <span>{poi.label}</span>
+              {!unlocked && (
+                <span className="rounded-full border border-surface-500/70 px-1.5 py-0.5 text-[0.52rem] font-black uppercase tracking-wider text-content-muted">
+                  Presto
+                </span>
+              )}
+            </span>
           </button>
         );
       })}
