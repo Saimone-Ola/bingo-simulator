@@ -127,23 +127,41 @@ export default function HubPage() {
         className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-4"
         style={{ zIndex: 'var(--z-hud)' }}
       >
-        <HudCard className="pointer-events-auto">
-          <p className="text-2xs uppercase tracking-wide text-content-muted">Giocatore</p>
-          <p className="font-semibold">{user?.displayName ?? '—'}</p>
-          <p className="mt-1">
-            <CreditAmount value={balance} />
-          </p>
-          <p className="mt-1 text-2xs text-content-muted">
-            {players.length} {players.length === 1 ? 'persona' : 'persone'} in piazza
-          </p>
+        <HudCard className="pointer-events-auto min-w-56">
+          <div className="flex items-center gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-brand-300/25 bg-brand-500/20 font-display text-lg font-black text-brand-100 shadow-glow-brand">
+              {(user?.displayName ?? 'B').slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <div className="hud-brand-line mb-1.5" aria-hidden="true" />
+              <p className="truncate font-display text-base font-black text-content-primary">
+                {user?.displayName ?? '—'}
+              </p>
+              <p className="text-2xs font-bold uppercase tracking-[0.16em] text-success-400">
+                ● Online
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 flex items-end justify-between gap-4 border-t border-surface-600/70 pt-3">
+            <div>
+              <p className="text-2xs font-bold uppercase tracking-wide text-content-muted">Portafoglio</p>
+              <p className="mt-0.5"><CreditAmount value={balance} /></p>
+            </div>
+            <div className="text-right">
+              <p className="text-lg font-black text-content-primary">{players.length}</p>
+              <p className="text-2xs text-content-muted">
+                {players.length === 1 ? 'giocatore' : 'giocatori'}
+              </p>
+            </div>
+          </div>
         </HudCard>
 
         <div className="pointer-events-auto flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => setShowChat((value) => !value)}>
-            {showChat ? 'Nascondi chat' : 'Chat'}
+            <span aria-hidden="true">◈</span> {showChat ? 'Nascondi chat' : 'Chat'}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowStats((value) => !value)}>
-            {showStats ? 'Nascondi FPS' : 'FPS'}
+            <span aria-hidden="true">⌁</span> {showStats ? 'Nascondi FPS' : 'FPS'}
           </Button>
           <Button
             variant="ghost"
@@ -152,7 +170,7 @@ export default function HubPage() {
               void logout().then(() => navigate('/', { replace: true }));
             }}
           >
-            Esci
+            <span aria-hidden="true">↗</span> Esci
           </Button>
         </div>
       </header>
@@ -196,7 +214,7 @@ export default function HubPage() {
 
         <div className="flex flex-col items-end gap-2">
           <EmoteBar />
-          <p className="pointer-events-none rounded-sm bg-surface-950/70 px-2 py-1 text-2xs text-content-muted backdrop-blur">
+          <p className="pointer-events-none rounded-lg border border-surface-600/60 bg-surface-950/75 px-3 py-1.5 text-2xs font-medium text-content-muted shadow-hud backdrop-blur-xl">
             {touchDevice
               ? 'Stick per muoverti · trascina per girare'
               : 'WASD per muoverti · Shift per correre · trascina per girare'}
