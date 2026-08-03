@@ -13,11 +13,11 @@ const CURRENT_PHASE = 1;
 export default function PoiMenu() {
   return (
     <nav
-      className="pointer-events-auto flex flex-col gap-1 rounded-lg border border-surface-600 bg-surface-800/85 p-2 shadow-hud backdrop-blur"
+      className="pointer-events-auto flex flex-col gap-1 rounded-2xl border border-brand-300/20 bg-surface-900/82 p-2.5 shadow-panel backdrop-blur-xl"
       aria-label="Destinazioni"
     >
       <p className="px-1 text-2xs font-semibold uppercase tracking-wide text-content-muted">
-        Vai a
+        ✦ Destinazioni
       </p>
       {HUB_POIS.map((poi) => {
         const unlocked = poi.availableFromPhase <= CURRENT_PHASE;
@@ -28,10 +28,10 @@ export default function PoiMenu() {
             disabled={!unlocked}
             onClick={() => sendTeleport(poi.id)}
             title={unlocked ? undefined : 'Non ancora disponibile'}
-            className={`rounded-sm px-2 py-1 text-left text-xs font-medium transition-colors ${
+            className={`rounded-lg px-3 py-2 text-left text-xs font-bold transition-all ${
               unlocked
-                ? 'text-content-secondary hover:bg-surface-700 hover:text-content-primary'
-                : 'cursor-not-allowed text-content-muted opacity-50'
+                ? 'border border-transparent bg-surface-800/55 text-content-secondary hover:-translate-x-1 hover:border-brand-400/30 hover:bg-brand-500/15 hover:text-content-primary'
+                : 'cursor-not-allowed border border-transparent text-content-muted opacity-40'
             }`}
           >
             {poi.label}
