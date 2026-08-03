@@ -188,7 +188,7 @@ function BingoHall() {
       <WorldSign
         position={[0, 6.6, 3.2]}
         title="SALA BINGO"
-        subtitle="Partite multiplayer · Prossimamente"
+        subtitle="Partite multiplayer · Sala aperta"
         color={COLORS.gold}
       />
     </group>
@@ -357,7 +357,7 @@ function Fountain() {
       <WorldSign
         position={[0, 4.4, 0]}
         title="PIAZZA CENTRALE"
-        subtitle="Benvenuto nel mondo di Bingo Simulator"
+        subtitle="Landmark scenico · area non accessibile"
         color={COLORS.cyan}
       />
     </group>
