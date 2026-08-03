@@ -282,7 +282,7 @@ export default function BingoPage() {
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_15rem]">
             <section className="rounded-2xl border border-brand-300/25 bg-gradient-to-br from-surface-800/95 to-surface-900/95 p-4 shadow-panel sm:p-6">
-              <div className="mx-auto max-w-xl">
+              <div className="mx-auto max-w-lg">
                 <div className="mb-2 grid grid-cols-5 gap-2">
                   {COLUMNS.map((letter, index) => (
                     <div key={letter} className={`grid h-12 place-items-center rounded-xl bg-gradient-to-b ${
