@@ -1,4 +1,9 @@
-import { isApiErrorBody, type ApiErrorCode, type AuthResponse } from '@bingo/shared';
+import {
+  isApiErrorBody,
+  type ApiErrorCode,
+  type AuthResponse,
+  type AvatarAppearance,
+} from '@bingo/shared';
 import { apiOrigin } from './apiOrigin';
 
 const API_URL = apiOrigin();
@@ -117,4 +122,10 @@ export const api = {
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
   me: () => request<{ user: AuthResponse['user']; balance: number }>('/api/auth/me'),
   balance: () => request<{ balance: number; entryCount: number }>('/api/wallet/balance'),
+  avatar: () => request<{ appearance: AvatarAppearance }>('/api/avatar'),
+  updateAvatar: (appearance: AvatarAppearance) =>
+    request<{ appearance: AvatarAppearance }>('/api/avatar', {
+      method: 'PATCH',
+      body: appearance,
+    }),
 };
