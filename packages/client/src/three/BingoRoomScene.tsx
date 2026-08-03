@@ -77,7 +77,7 @@ function CanvasText({
   return (
     <mesh position={position} rotation={rotation} renderOrder={renderOrder}>
       <planeGeometry args={[width, height]} />
-      <meshBasicMaterial map={texture} transparent toneMapped={false} depthWrite={false} />
+      <meshBasicMaterial map={texture} transparent toneMapped={false} depthTest={false} depthWrite={false} />
     </mesh>
   );
 }
@@ -577,7 +577,7 @@ function ItalianCard3D({
             {number !== null && (
               <CanvasText
                 text={number.toString()}
-                position={[0, 0, 0.028]}
+                position={[0, 0, 0.06]}
                 color="#2b2115"
                 width={0.25}
                 height={0.17}
