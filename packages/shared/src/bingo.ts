@@ -1,3 +1,5 @@
+import type { AvatarAppearance } from './avatar';
+
 import { z } from 'zod';
 
 export const BINGO_ROOM_CODE_MAX_LENGTH = 18;
@@ -65,6 +67,7 @@ export interface BingoPlayerSummary {
   ready: boolean;
   cardCount: number;
   markingMode: BingoMarkingMode;
+  appearance: AvatarAppearance;
   isHost: boolean;
   isNpc: boolean;
   connected: boolean;
