@@ -15,8 +15,9 @@ RUN corepack enable
 
 # argon2 is a native module. It ships prebuilds for common platforms, but the
 # toolchain has to be here in case this architecture is not one of them.
+# pnpm also needs git because the lockfile contains a git-sourced dependency.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make g++ \
+ && apt-get install -y --no-install-recommends python3 make g++ git \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
