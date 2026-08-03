@@ -46,6 +46,7 @@ interface ProceduralCharacterProps {
   scale?: number;
   phase?: number;
   reducedMotion?: boolean;
+  seated?: boolean;
 }
 
 interface MotionTargets {
@@ -58,6 +59,10 @@ interface MotionTargets {
   leftArmZ: number;
   rightArmX: number;
   rightArmZ: number;
+  leftLegX: number;
+  rightLegX: number;
+  leftKneeX: number;
+  rightKneeX: number;
   mouth: number;
 }
 
@@ -88,6 +93,10 @@ const BASE_TARGETS: MotionTargets = {
   leftArmZ: 0.12,
   rightArmX: -0.18,
   rightArmZ: -0.12,
+  leftLegX: 0,
+  rightLegX: 0,
+  leftKneeX: 0,
+  rightKneeX: 0,
   mouth: 0.18,
 };
 
@@ -95,16 +104,29 @@ function motionForState(
   state: CharacterAnimationState,
   wave: number,
   beat: number,
+  seated: boolean,
 ): MotionTargets {
   const next = { ...BASE_TARGETS };
+  const seat = () => {
+    next.leftLegX = -1.35;
+    next.rightLegX = -1.35;
+    next.leftKneeX = 1.35;
+    next.rightKneeX = 1.35;
+  };
+  if (seated) seat();
 
   switch (state) {
+    case 'SEATED_IDLE':
+      seat();
+      next.headY = wave * 0.035;
+      break;
     case 'LOOK_AT_STAGE':
       next.headX = -0.08;
       next.headY = wave * 0.055;
       break;
     case 'LOOK_AT_CARD':
     case 'MARK_NUMBER':
+      seat();
       next.torsoX = 0.12;
       next.headX = 0.3;
       next.rightArmX = state === 'MARK_NUMBER' ? -1.12 + beat * 0.12 : -0.7;
@@ -156,11 +178,26 @@ function motionForState(
       next.mouth = 0.52 + beat * 0.25;
       break;
     case 'STAND_UP':
+      next.rootY = Math.max(0, beat) * 0.015;
+      break;
     case 'WALK':
+      next.rootY = Math.abs(beat) * 0.022;
+      next.leftArmX = wave * 0.5;
+      next.rightArmX = -wave * 0.5;
+      next.leftLegX = -wave * 0.62;
+      next.rightLegX = wave * 0.62;
+      next.leftKneeX = Math.max(0, wave) * 0.35;
+      next.rightKneeX = Math.max(0, -wave) * 0.35;
+      break;
     case 'RUN':
-      next.rootY = 0.42;
-      next.leftArmX = wave * 0.42;
-      next.rightArmX = -wave * 0.42;
+      next.rootY = Math.abs(beat) * 0.045;
+      next.torsoX = -0.1;
+      next.leftArmX = wave * 0.82;
+      next.rightArmX = -wave * 0.82;
+      next.leftLegX = -wave * 0.92;
+      next.rightLegX = wave * 0.92;
+      next.leftKneeX = Math.max(0, wave) * 0.62;
+      next.rightKneeX = Math.max(0, -wave) * 0.62;
       break;
     case 'ZOMBIE_IDLE':
     case 'ZOMBIE_MOVE':
@@ -172,6 +209,7 @@ function motionForState(
       next.mouth = state === 'ZOMBIE_FEED' ? 0.9 : 0.52;
       break;
     case 'RETURN_TO_SEAT':
+      seat();
       next.rootY = Math.max(0, wave) * 0.08;
       next.torsoX = 0.08;
       break;
@@ -283,6 +321,7 @@ export default function ProceduralCharacter({
   scale = 1,
   phase = 0,
   reducedMotion = false,
+  seated = false,
 }: ProceduralCharacterProps) {
   const root = useRef<THREE.Group>(null);
   const torso = useRef<THREE.Group>(null);
@@ -290,6 +329,10 @@ export default function ProceduralCharacter({
   const mouth = useRef<THREE.Mesh>(null);
   const leftArm = useRef<THREE.Group>(null);
   const rightArm = useRef<THREE.Group>(null);
+  const leftLeg = useRef<THREE.Group>(null);
+  const rightLeg = useRef<THREE.Group>(null);
+  const leftKnee = useRef<THREE.Group>(null);
+  const rightKnee = useRef<THREE.Group>(null);
   const baseY = position[1];
   const bodyWidth = BODY_WIDTH[appearance.bodyType];
   const heightScale = THREE.MathUtils.clamp(appearance.heightCm / 175, 0.82, 1.18);
@@ -301,11 +344,21 @@ export default function ProceduralCharacter({
   );
 
   useFrame(({ clock }, delta) => {
-    if (!root.current || !torso.current || !head.current || !leftArm.current || !rightArm.current) return;
+    if (
+      !root.current ||
+      !torso.current ||
+      !head.current ||
+      !leftArm.current ||
+      !rightArm.current ||
+      !leftLeg.current ||
+      !rightLeg.current ||
+      !leftKnee.current ||
+      !rightKnee.current
+    ) return;
     const time = clock.elapsedTime * motionSpeed + phase;
     const wave = reducedMotion ? 0 : Math.sin(time);
     const beat = reducedMotion ? 0 : Math.sin(time * 2.1);
-    const targets = motionForState(state, wave, beat);
+    const targets = motionForState(state, wave, beat, seated);
     const damping = reducedMotion ? 28 : 9;
     const breathing = reducedMotion ? 0 : Math.sin(time * 1.15) * 0.008;
 
@@ -318,6 +371,10 @@ export default function ProceduralCharacter({
     leftArm.current.rotation.z = THREE.MathUtils.damp(leftArm.current.rotation.z, targets.leftArmZ, damping, delta);
     rightArm.current.rotation.x = THREE.MathUtils.damp(rightArm.current.rotation.x, targets.rightArmX, damping, delta);
     rightArm.current.rotation.z = THREE.MathUtils.damp(rightArm.current.rotation.z, targets.rightArmZ, damping, delta);
+    leftLeg.current.rotation.x = THREE.MathUtils.damp(leftLeg.current.rotation.x, targets.leftLegX, damping, delta);
+    rightLeg.current.rotation.x = THREE.MathUtils.damp(rightLeg.current.rotation.x, targets.rightLegX, damping, delta);
+    leftKnee.current.rotation.x = THREE.MathUtils.damp(leftKnee.current.rotation.x, targets.leftKneeX, damping, delta);
+    rightKnee.current.rotation.x = THREE.MathUtils.damp(rightKnee.current.rotation.x, targets.rightKneeX, damping, delta);
     if (mouth.current) {
       mouth.current.scale.y = THREE.MathUtils.damp(mouth.current.scale.y, targets.mouth, 15, delta);
     }
@@ -347,12 +404,16 @@ export default function ProceduralCharacter({
         <Arm side={1} skinTone={appearance.skinTone} shirtColor={appearance.shirtColor} armRef={rightArm} />
 
         {([-1, 1] as const).map((side) => (
-          <group key={side} position={[side * 0.16 * bodyWidth, 0.68, 0]} rotation={[-1.35, 0, 0]}>
+          <group
+            key={side}
+            ref={side === -1 ? leftLeg : rightLeg}
+            position={[side * 0.16 * bodyWidth, 0.68, 0]}
+          >
             <mesh position={[0, -0.23, 0]} castShadow>
               <capsuleGeometry args={[0.095, 0.32, 6, 12]} />
               <meshStandardMaterial color={appearance.pantsColor} roughness={0.82} />
             </mesh>
-            <group position={[0, -0.48, 0]} rotation={[1.35, 0, 0]}>
+            <group ref={side === -1 ? leftKnee : rightKnee} position={[0, -0.48, 0]}>
               <mesh position={[0, -0.2, 0]} castShadow>
                 <capsuleGeometry args={[0.085, 0.29, 6, 12]} />
                 <meshStandardMaterial color={appearance.pantsColor} roughness={0.84} />
