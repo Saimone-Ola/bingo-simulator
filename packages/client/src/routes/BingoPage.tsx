@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   normaliseBingoRoomCode,
@@ -12,6 +12,7 @@ import {
   type RoomBingoConfig,
 } from '@bingo/shared';
 import { ResponsiblePlayNotice } from '../components/ui';
+import { SceneBoundary } from '../components/SceneBoundary';
 import {
   cancelBingoStart,
   claimBingo,
@@ -25,6 +26,9 @@ import {
   type BingoConnectionStatus,
 } from '../net/bingoConnection';
 import { useAuthStore } from '../store/auth';
+import type { BingoMarkInteraction } from '../three/BingoRoomScene';
+
+const BingoRoomScene = lazy(() => import('../three/BingoRoomScene'));
 
 const EMPTY_CONFIG: RoomBingoConfig = {
   minPlayers: 2,
@@ -414,6 +418,201 @@ function Countdown({ snapshot, now }: { snapshot: BingoSnapshotPayload; now: num
   );
 }
 
+
+function playMarkerSound(): void {
+  try {
+    const context = new AudioContext();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(165, context.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(95, context.currentTime + 0.055);
+    gain.gain.setValueAtTime(0.045, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.065);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.07);
+    oscillator.addEventListener('ended', () => void context.close(), { once: true });
+  } catch {
+    // Audio feedback is progressive enhancement; marking must always continue.
+  }
+}
+
+function ImmersiveGame({
+  snapshot,
+  selectedCard,
+  onSelectedCard,
+  markerColor,
+  onMarkerColor,
+  now,
+  reducedMotion,
+  onClassicView,
+}: {
+  snapshot: BingoSnapshotPayload;
+  selectedCard: number;
+  onSelectedCard: (index: number) => void;
+  markerColor: string;
+  onMarkerColor: (color: string) => void;
+  now: number;
+  reducedMotion: boolean;
+  onClassicView: () => void;
+}) {
+  const [focusCard, setFocusCard] = useState(false);
+  const [lastMark, setLastMark] = useState<BingoMarkInteraction | null>(null);
+  const card = snapshot.myCards[selectedCard] ?? snapshot.myCards[0];
+  const me = snapshot.players.find((player) => player.sessionId === snapshot.mySessionId);
+  const seconds = Math.max(0, Math.ceil(((snapshot.nextDrawAt ?? now) - now) / 1_000));
+  const manual = me?.markingMode === 'MANUAL';
+
+  const markCell = (cellIndex: number, marked: boolean) => {
+    if (!manual || !card) return;
+    playMarkerSound();
+    setLastMark({ cellIndex, token: Date.now() });
+    markBingoCell(snapshot.round, selectedCard, cellIndex, marked);
+  };
+
+  return (
+    <section
+      className="relative min-h-[650px] overflow-hidden rounded-[1.8rem] border border-violet-300/20 bg-[#0c0914] shadow-[0_28px_100px_-28px_rgb(0_0_0_/_0.95)]"
+      aria-label="Sala Bingo 3D in prima persona"
+    >
+      <div className="absolute inset-0">
+        <SceneBoundary>
+          <Suspense
+            fallback={
+              <div className="grid h-full place-items-center bg-[#0c0914] text-sm text-white/55">
+                Preparazione della sala 3D…
+              </div>
+            }
+          >
+            <BingoRoomScene
+              card={card}
+              cardIndex={selectedCard}
+              currentNumber={snapshot.currentNumber}
+              drawnNumbers={snapshot.drawnNumbers}
+              players={snapshot.players}
+              manualMarking={manual}
+              markerColor={markerColor}
+              focusCard={focusCard}
+              reducedMotion={reducedMotion}
+              lastMark={lastMark}
+              onMarkCell={markCell}
+              onSelectMarker={onMarkerColor}
+            />
+          </Suspense>
+        </SceneBoundary>
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-3 bg-gradient-to-b from-black/72 via-black/25 to-transparent p-4 sm:p-5">
+        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#111020]/78 p-2.5 pr-4 shadow-xl backdrop-blur-xl">
+          <div className="grid h-16 w-16 place-items-center rounded-full border-4 border-white/55 bg-gradient-to-br from-amber-200 via-amber-400 to-orange-600 font-display text-2xl font-black text-[#3a1702] shadow-[0_0_35px_-12px_#f59e0b]">
+            {snapshot.currentNumber ?? '—'}
+          </div>
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-cyan-300">Regia server</p>
+            <p className="font-display text-lg font-black">Prossimo tra {seconds === 0 ? '<1' : seconds}s</p>
+            <p className="text-[10px] text-white/45">{snapshot.drawnNumbers.length}/90 estratti</p>
+          </div>
+        </div>
+
+        <div className="pointer-events-auto flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setFocusCard((value) => !value)}
+            className={`rounded-xl border px-4 py-2.5 text-xs font-black shadow-xl backdrop-blur-xl transition ${focusCard ? 'border-amber-200 bg-amber-300 text-[#2d1703]' : 'border-white/12 bg-black/55 text-white hover:bg-black/75'}`}
+          >
+            {focusCard ? '↑ Guarda il palco' : '↓ Concentrati sulla cartella'}
+          </button>
+          <button
+            type="button"
+            onClick={onClassicView}
+            className="rounded-xl border border-white/12 bg-black/55 px-4 py-2.5 text-xs font-black shadow-xl backdrop-blur-xl hover:bg-black/75"
+          >
+            Vista classica 2D
+          </button>
+        </div>
+      </div>
+
+      {!focusCard && (
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/55 shadow-[0_0_8px_#fff]" />
+      )}
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/88 via-black/55 to-transparent px-4 pb-4 pt-20 sm:px-5 sm:pb-5">
+        <div className="pointer-events-auto grid gap-3 rounded-2xl border border-white/10 bg-[#111020]/82 p-3 shadow-2xl backdrop-blur-xl lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="mr-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-violet-300">
+                {manual ? 'Interazione manuale' : 'Segnatura automatica'}
+              </p>
+              <p className="text-[10px] text-white/45">
+                {focusCard
+                  ? manual
+                    ? 'Premi direttamente i numeri sulla cartella 3D.'
+                    : 'Il server segna i numeri corretti.'
+                  : 'Trascina per guardarti intorno · frecce/WASD · controller.'}
+              </p>
+            </div>
+
+            {snapshot.myCards.map((entry, index) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => onSelectedCard(index)}
+                className={`rounded-lg border px-3 py-2 text-[11px] font-black transition ${selectedCard === index ? 'border-amber-200 bg-amber-300 text-[#2b1703]' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+              >
+                Cartella {index + 1}
+              </button>
+            ))}
+
+            {manual && (
+              <div className="ml-1 flex items-center gap-1.5 rounded-lg border border-white/8 bg-black/25 px-2 py-1.5">
+                {['#ef4444', '#2563eb', '#16a34a', '#7c3aed'].map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => onMarkerColor(color)}
+                    aria-label={`Scegli pennarello ${color}`}
+                    className={`h-7 w-7 rounded-full border-2 transition ${markerColor === color ? 'scale-110 border-white' : 'border-white/20'}`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              disabled={snapshot.awardedTiers.includes('CINQUINA')}
+              onClick={() => claimBingo(snapshot.round, 'CINQUINA', selectedCard)}
+              className="rounded-xl border border-cyan-300/35 bg-cyan-400/15 px-4 py-3 font-display text-sm font-black text-cyan-100 hover:bg-cyan-400/25 disabled:opacity-35"
+            >
+              CINQUINA
+            </button>
+            <button
+              type="button"
+              disabled={snapshot.awardedTiers.includes('BINGO')}
+              onClick={() => claimBingo(snapshot.round, 'BINGO', selectedCard)}
+              className="rounded-xl bg-gradient-to-r from-amber-300 to-orange-500 px-5 py-3 font-display text-lg font-black text-[#281502] shadow-[0_12px_30px_-16px_#fb923c] hover:-translate-y-0.5 disabled:opacity-35"
+            >
+              ★ BINGO
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-2 flex min-h-8 items-center justify-center gap-1.5">
+          {snapshot.drawnNumbers.slice(-5).reverse().map((number) => (
+            <span key={number} className="grid h-8 w-8 place-items-center rounded-full border-2 border-white/50 bg-amber-300 text-[11px] font-black text-[#351703] shadow-lg">
+              {number}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function GameTable({
   snapshot,
   selectedCard,
@@ -613,6 +812,16 @@ export default function BingoPage() {
   const [markerColor, setMarkerColor] = useState('#2563eb');
   const [hostConfig, setHostConfig] = useState<RoomBingoConfig>(EMPTY_CONFIG);
   const [copied, setCopied] = useState(false);
+  const [immersive, setImmersive] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => setReducedMotion(media.matches);
+    apply();
+    media.addEventListener?.('change', apply);
+    return () => media.removeEventListener?.('change', apply);
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 200);
@@ -771,7 +980,31 @@ export default function BingoPage() {
               {snapshot.phase === 'COUNTDOWN' && <Countdown snapshot={snapshot} now={now} />}
 
               {(snapshot.phase === 'PLAYING' || snapshot.phase === 'EVENT_ACTIVE') && (
-                <GameTable snapshot={snapshot} selectedCard={selectedCard} onSelectedCard={setSelectedCard} markerColor={markerColor} onMarkerColor={setMarkerColor} now={now} />
+                immersive ? (
+                  <ImmersiveGame
+                    snapshot={snapshot}
+                    selectedCard={selectedCard}
+                    onSelectedCard={setSelectedCard}
+                    markerColor={markerColor}
+                    onMarkerColor={setMarkerColor}
+                    now={now}
+                    reducedMotion={reducedMotion}
+                    onClassicView={() => setImmersive(false)}
+                  />
+                ) : (
+                  <div className="grid gap-3">
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setImmersive(true)}
+                        className="rounded-xl border border-violet-300/25 bg-violet-400/12 px-4 py-2.5 text-xs font-black text-violet-100 hover:bg-violet-400/20"
+                      >
+                        Entra nella sala 3D
+                      </button>
+                    </div>
+                    <GameTable snapshot={snapshot} selectedCard={selectedCard} onSelectedCard={setSelectedCard} markerColor={markerColor} onMarkerColor={setMarkerColor} now={now} />
+                  </div>
+                )
               )}
 
               {(snapshot.phase === 'RESULTS' || snapshot.phase === 'ENDED') && (
