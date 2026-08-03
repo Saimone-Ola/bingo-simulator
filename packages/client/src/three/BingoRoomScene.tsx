@@ -181,7 +181,7 @@ function SeatedCameraController({
       pitchTarget.current = THREE.MathUtils.clamp(pitchTarget.current, -0.88, 0.42);
     } else {
       yawTarget.current = 0;
-      pitchTarget.current = -0.61;
+      pitchTarget.current = -0.41;
     }
 
     const damping = reducedMotion ? 30 : 11;
@@ -199,7 +199,7 @@ function SeatedCameraController({
     );
 
     const targetPosition = focusCard
-      ? new THREE.Vector3(0, 1.43, 4.08)
+      ? new THREE.Vector3(0, 1.85, 5.1)
       : new THREE.Vector3(0, 1.68, 4.65);
     camera.position.x = THREE.MathUtils.damp(camera.position.x, targetPosition.x, damping, delta);
     camera.position.y = THREE.MathUtils.damp(camera.position.y, targetPosition.y, damping, delta);
