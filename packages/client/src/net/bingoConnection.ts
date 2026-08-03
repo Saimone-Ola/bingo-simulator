@@ -42,6 +42,12 @@ function requestId(prefix: string): string {
 let room: Room | null = null;
 let deliberateLeave = false;
 
+const INITIAL_CONNECT_DELAYS_MS = [0, 1_200, 2_500, 5_000] as const;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export async function connectToBingo(
   accessToken: string,
   requestedCode: string,
@@ -50,11 +56,31 @@ export async function connectToBingo(
   deliberateLeave = false;
   handlers.onStatus('connecting');
 
-  const client = new Client(endpoint());
-  const joined = await client.joinOrCreate(ROOM_NAMES.bingo, {
-    accessToken,
-    roomCode: normaliseBingoRoomCode(requestedCode),
-  });
+  const roomCode = normaliseBingoRoomCode(requestedCode);
+  let joined: Room | null = null;
+  let lastError: unknown = null;
+
+  for (const delayMs of INITIAL_CONNECT_DELAYS_MS) {
+    if (deliberateLeave) throw new Error('Bingo connection cancelled');
+    if (delayMs > 0) await wait(delayMs);
+    if (deliberateLeave) throw new Error('Bingo connection cancelled');
+
+    try {
+      const client = new Client(endpoint());
+      joined = await client.joinOrCreate(ROOM_NAMES.bingo, {
+        accessToken,
+        roomCode,
+      });
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (!joined) {
+    handlers.onStatus('failed');
+    throw lastError instanceof Error ? lastError : new Error('Unable to reach the Bingo server');
+  }
   room = joined;
 
   joined.onMessage(BINGO_SERVER_MESSAGES.snapshot, handlers.onSnapshot);
