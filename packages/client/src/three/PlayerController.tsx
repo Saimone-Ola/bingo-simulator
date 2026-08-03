@@ -24,7 +24,7 @@ import { RECONCILE_RATE, RECONCILE_THRESHOLD, localPlayer, seedLocalPlayer } fro
  * than a threshold the server wins.
  */
 const CAMERA_MIN_DISTANCE = 2.5;
-const CAMERA_MAX_DISTANCE = 12;
+const CAMERA_MAX_DISTANCE = 14;
 const CAMERA_MIN_PITCH = 0.15;
 const CAMERA_MAX_PITCH = 1.35;
 const LOOK_SENSITIVITY = 0.005;
@@ -34,8 +34,8 @@ export default function PlayerController() {
   const mySessionId = useHubStore((state) => state.mySessionId);
 
   const yaw = useRef(Math.PI);
-  const pitch = useRef(0.55);
-  const distance = useRef(7);
+  const pitch = useRef(0.38);
+  const distance = useRef(9);
   const sinceLastIntent = useRef(0);
   const target = useRef(new Vector3());
   const desired = useRef(new Vector3());
