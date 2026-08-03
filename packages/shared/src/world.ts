@@ -67,7 +67,7 @@ export const HUB_SPAWN_POINTS: readonly { x: number; z: number; rotY: number }[]
   { x: 0, z: 6, rotY: Math.PI },
 ];
 
-/** Teleport targets and interaction points shown on the compass. */
+/** Enterable destinations. The central fountain is scenery and collision only. */
 export interface PointOfInterest {
   id: string;
   /** Italian label shown in the UI. */
@@ -89,7 +89,7 @@ export const HUB_POIS: readonly PointOfInterest[] = [
     z: -20,
     standX: 0,
     standZ: -15,
-    availableFromPhase: 2,
+    availableFromPhase: 1,
   },
   {
     id: 'slot_arcade',
@@ -98,7 +98,7 @@ export const HUB_POIS: readonly PointOfInterest[] = [
     z: 0,
     standX: 15,
     standZ: 0,
-    availableFromPhase: 4,
+    availableFromPhase: 1,
   },
   {
     id: 'prize_pavilion',
@@ -107,7 +107,7 @@ export const HUB_POIS: readonly PointOfInterest[] = [
     z: 2,
     standX: -15,
     standZ: 2,
-    availableFromPhase: 6,
+    availableFromPhase: 1,
   },
   {
     id: 'shop',
@@ -116,15 +116,6 @@ export const HUB_POIS: readonly PointOfInterest[] = [
     z: 19,
     standX: 6,
     standZ: 14,
-    availableFromPhase: 7,
-  },
-  {
-    id: 'fountain',
-    label: 'Fontana',
-    x: 0,
-    z: 0,
-    standX: 0,
-    standZ: 5,
     availableFromPhase: 1,
   },
 ];
