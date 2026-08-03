@@ -29,7 +29,10 @@ COPY packages/client/package.json packages/client/
 
 # Only the server's dependency tree is needed; the client is deployed
 # separately as static files.
-RUN pnpm install --frozen-lockfile --filter @bingo/server... --filter @bingo/shared
+# Public git dependencies sometimes declare an SSH GitHub URL. Render has no
+# deploy key inside the build container, so rewrite those URLs to public HTTPS.
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:" \
+ && pnpm install --frozen-lockfile --filter @bingo/server... --filter @bingo/shared
 
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
