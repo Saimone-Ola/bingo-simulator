@@ -4,7 +4,7 @@ import { AppError } from '../../errors';
 import { loadPlayerProfile, saveAvatarAppearance } from '../../services/players';
 import { asyncRoute, requireAuth } from '../middleware/auth';
 
-const router = Router();
+const router: Router = Router();
 
 router.use(requireAuth);
 
