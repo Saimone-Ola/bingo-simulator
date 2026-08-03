@@ -342,3 +342,90 @@
     border-radius: 1.25rem !important;
   }
 }
+
+
+/* -------------------------------------------------------------------------
+ * In-world labels — intentionally large and high-contrast for presentation.
+ * ---------------------------------------------------------------------- */
+
+.world-sign {
+  display: flex;
+  min-width: 13rem;
+  align-items: center;
+  gap: 0.7rem;
+  border: 2px solid;
+  border-radius: 1rem;
+  padding: 0.65rem 0.9rem;
+  color: #fff;
+  background: rgb(19 12 48 / 0.9);
+  box-shadow: 0 16px 40px -22px #000;
+  backdrop-filter: blur(14px);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.world-sign-dot {
+  width: 0.62rem;
+  height: 0.62rem;
+  flex: 0 0 auto;
+  border-radius: 99px;
+}
+
+.world-sign strong,
+.world-sign small {
+  display: block;
+}
+
+.world-sign strong {
+  font-family: var(--font-display);
+  font-size: 0.86rem;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+}
+
+.world-sign small {
+  margin-top: 0.12rem;
+  color: #c9c1ea;
+  font-size: 0.57rem;
+  font-weight: 650;
+  letter-spacing: 0.025em;
+}
+
+.poi-chip {
+  min-width: 8.5rem;
+  border: 1px solid rgb(214 207 255 / 0.45);
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  color: #e3dcff;
+  background: rgb(32 24 71 / 0.83);
+  box-shadow: 0 8px 24px -14px #170d42;
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-align: center;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+  user-select: none;
+}
+
+.poi-chip-ready {
+  border-color: rgb(255 211 103 / 0.9);
+  color: #2d1a00;
+  background: rgb(255 202 74 / 0.94);
+  box-shadow: 0 0 24px -8px #ffc84a;
+}
+
+@media (max-width: 720px) {
+  .world-sign {
+    min-width: 10rem;
+    padding: 0.5rem 0.7rem;
+  }
+
+  .world-sign strong {
+    font-size: 0.72rem;
+  }
+
+  .world-sign small {
+    font-size: 0.52rem;
+  }
+}
