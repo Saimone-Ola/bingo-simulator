@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BINGO_FREE_INDEX } from '@bingo/shared';
-import { createBingoCard, findWinningNumbers } from './bingoRoom';
+import { createBingoCard, findWinningNumbers } from './bingoRules';
 
 describe('BingoRoom rules', () => {
   it('creates valid 75-ball cards with a free centre', () => {
