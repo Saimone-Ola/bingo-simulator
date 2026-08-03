@@ -247,7 +247,7 @@ export default function BingoPage() {
                   <div>
                     <p className="text-2xs font-black uppercase tracking-[0.18em] text-info-400">Regia server</p>
                     <h2 className="font-display text-2xl font-black">
-                      {status === 'connected' ? `Prossima estrazione tra ${countdown}s` : 'Connessione alla sala…'}
+                      {status === 'connected' ? `Prossima estrazione tra ${countdown === 0 ? '<1' : countdown}s` : 'Connessione alla sala…'}
                     </h2>
                     <p className="mt-1 max-w-2xl text-sm leading-relaxed text-content-secondary">
                       Seleziona i numeri già estratti sulla cartella. Quando completi una riga, una colonna o una diagonale, chiama BINGO.
@@ -282,7 +282,7 @@ export default function BingoPage() {
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_15rem]">
             <section className="rounded-2xl border border-brand-300/25 bg-gradient-to-br from-surface-800/95 to-surface-900/95 p-4 shadow-panel sm:p-6">
-              <div className="mx-auto max-w-lg">
+              <div className="mx-auto max-w-md">
                 <div className="mb-2 grid grid-cols-5 gap-2">
                   {COLUMNS.map((letter, index) => (
                     <div key={letter} className={`grid h-12 place-items-center rounded-xl bg-gradient-to-b ${
