@@ -24,6 +24,13 @@ const COLORS = {
   water: '#56e3ff',
 } as const;
 
+const PLANTER_LEAF_POSITIONS: Array<[number, number, number]> = [
+  [0, 3, 0],
+  [0.65, 2.65, 0.15],
+  [-0.6, 2.7, -0.2],
+  [0.1, 2.65, 0.65],
+];
+
 function Ground() {
   const width = HUB_BOUNDS.maxX - HUB_BOUNDS.minX;
   const depth = HUB_BOUNDS.maxZ - HUB_BOUNDS.minZ;
@@ -387,13 +394,8 @@ function Planters() {
               <cylinderGeometry args={[0.16, 0.22, 2, 10]} />
               <meshStandardMaterial color={COLORS.trunk} roughness={0.9} />
             </mesh>
-            {([
-              [0, 3, 0],
-              [0.65, 2.65, 0.15],
-              [-0.6, 2.7, -0.2],
-              [0.1, 2.65, 0.65],
-            ] satisfies Array<[number, number, number]>).map(([x, y, z], leafIndex) => (
-              <mesh key={leafIndex} position={[x, y, z]} castShadow>
+            {PLANTER_LEAF_POSITIONS.map((position, leafIndex) => (
+              <mesh key={leafIndex} position={position} castShadow>
                 <sphereGeometry args={[0.72, 12, 10]} />
                 <meshStandardMaterial
                   color={leafIndex % 2 ? COLORS.green : COLORS.foliage}
