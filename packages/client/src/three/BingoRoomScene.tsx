@@ -214,7 +214,6 @@ function RoomShell() {
               color="#ffcc84"
               distance={9}
               castShadow={false}
-              target-position={[0, -1, 1]}
             />
             <mesh>
               <cylinderGeometry args={[0.16, 0.22, 0.22, 16]} />
