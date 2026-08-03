@@ -18,8 +18,8 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://test:test@127.0.0.1:5432/bingo_test
       DATABASE_URL_UNPOOLED: postgresql://test:test@127.0.0.1:5432/bingo_test
-      ACCESS_TOKEN_SECRET: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-      REFRESH_TOKEN_SECRET: abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+      AUTH_ACCESS_SECRET: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      AUTH_REFRESH_SECRET: abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
       CLIENT_ORIGINS: http://localhost:5173
     steps:
       - uses: actions/checkout@v4
