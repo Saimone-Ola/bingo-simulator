@@ -221,7 +221,7 @@ export default function AvatarCustomizer({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="absolute inset-0 grid place-items-center bg-surface-950/65 p-4 backdrop-blur-sm"
+      className="fixed inset-0 grid place-items-center bg-surface-950/80 p-4 backdrop-blur-md"
       style={{ zIndex: 'var(--z-modal)' }}
       role="dialog"
       aria-modal="true"
@@ -290,10 +290,10 @@ export default function AvatarCustomizer({ onClose }: { onClose: () => void }) {
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-surface-600/70 pt-4">
                 <p className="max-w-lg text-xs leading-relaxed text-content-muted">
-                  Le modifiche sono salvate sul profilo e condivise con gli altri giocatori.
+                  Le modifiche sono salvate sul profilo e condivise con gli altri giocatori. Rientrerai automaticamente nella stessa stanza.
                 </p>
                 <Button variant="accent" size="lg" loading={saving} loadingLabel="Salvataggio…" onClick={() => void save()}>
-                  ✓ Salva e torna in piazza
+                  ✓ Salva personaggio
                 </Button>
               </div>
             </div>
