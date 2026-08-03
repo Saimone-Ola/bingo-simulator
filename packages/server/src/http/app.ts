@@ -9,6 +9,7 @@ import { AppError, isAppError } from '../errors';
 import { sanitizeError } from '../logging';
 import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallet';
+import avatarRoutes from './routes/avatar';
 
 const VERCEL_PROJECT_HOST =
   /^bingo-simulator-client-[a-z0-9-]+-saimone-olas-projects\\.vercel\\.app$/;
@@ -90,6 +91,7 @@ export function mountApi(app: Application): Application {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/wallet', walletRoutes);
+  app.use('/api/avatar', avatarRoutes);
 
   app.use('/api', (_request, response) => {
     const body: ApiErrorBody = { error: { code: 'not_found', message: 'Route not found' } };
