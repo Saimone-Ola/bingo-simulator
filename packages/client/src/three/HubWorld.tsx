@@ -387,12 +387,12 @@ function Planters() {
               <cylinderGeometry args={[0.16, 0.22, 2, 10]} />
               <meshStandardMaterial color={COLORS.trunk} roughness={0.9} />
             </mesh>
-            {[
+            {([
               [0, 3, 0],
               [0.65, 2.65, 0.15],
               [-0.6, 2.7, -0.2],
               [0.1, 2.65, 0.65],
-            ].map(([x, y, z], leafIndex) => (
+            ] satisfies Array<[number, number, number]>).map(([x, y, z], leafIndex) => (
               <mesh key={leafIndex} position={[x, y, z]} castShadow>
                 <sphereGeometry args={[0.72, 12, 10]} />
                 <meshStandardMaterial
