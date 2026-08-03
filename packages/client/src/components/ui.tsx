@@ -28,13 +28,13 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-brand-500 text-content-primary hover:bg-brand-400 active:bg-brand-600',
-  secondary: 'bg-surface-700 text-content-primary hover:bg-surface-600 active:bg-surface-800',
+  primary: 'bg-gradient-to-b from-brand-400 to-brand-600 text-content-primary shadow-glow-brand hover:brightness-110 active:brightness-95',
+  secondary: 'border border-surface-500/70 bg-gradient-to-b from-surface-600 to-surface-700 text-content-primary hover:border-brand-400/60 hover:brightness-110 active:brightness-95',
   ghost:
-    'border border-surface-500 text-content-secondary hover:border-brand-400 hover:text-content-primary',
+    'border border-surface-500/80 bg-surface-900/35 text-content-secondary backdrop-blur hover:border-brand-400 hover:bg-brand-500/10 hover:text-content-primary',
   // Reserved for committing value: buy cards, claim a prize, spin.
-  accent: 'bg-accent-500 text-content-inverse hover:bg-accent-400 active:bg-accent-600',
-  danger: 'bg-danger-500 text-content-primary hover:bg-danger-400 active:bg-danger-600',
+  accent: 'bg-gradient-to-b from-accent-400 to-accent-600 text-content-inverse shadow-glow-accent hover:brightness-110 active:brightness-95',
+  danger: 'bg-gradient-to-b from-danger-400 to-danger-600 text-content-primary hover:brightness-110 active:brightness-95',
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
@@ -59,8 +59,8 @@ export function Button({
       disabled={disabled ?? loading}
       aria-busy={loading || undefined}
       className={[
-        'inline-flex items-center justify-center gap-2 rounded-md font-semibold',
-        'transition-colors duration-150 ease-out',
+        'inline-flex items-center justify-center gap-2 rounded-lg border border-transparent font-bold',
+        'transition-all duration-200 ease-out hover:-translate-y-0.5 active:translate-y-0',
         'disabled:cursor-not-allowed disabled:opacity-50',
         BUTTON_SIZES[size],
         BUTTON_VARIANTS[variant],
@@ -97,12 +97,12 @@ export function Field({ label, hint, error, id, className = '', ...rest }: Field
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={[
-          'rounded-md border bg-surface-850 px-3 py-2.5',
-          'text-content-primary placeholder:text-content-muted',
-          'transition-colors duration-150 focus:outline-none',
+          'rounded-lg border bg-surface-950/55 px-3.5 py-3',
+          'text-content-primary shadow-inner placeholder:text-content-muted',
+          'transition-all duration-200 focus:-translate-y-px focus:bg-surface-950/80 focus:outline-none',
           error
-            ? 'border-danger-500 focus:border-danger-400'
-            : 'border-surface-600 focus:border-brand-400',
+            ? 'border-danger-500 focus:border-danger-400 focus:shadow-[0_0_0_3px_rgb(229_72_77_/_0.12)]'
+            : 'border-surface-600/90 hover:border-surface-500 focus:border-brand-400 focus:shadow-[0_0_0_3px_rgb(124_92_255_/_0.14)]',
           className,
         ].join(' ')}
       />
@@ -134,7 +134,7 @@ export function Panel({
 }) {
   return (
     <Tag
-      className={`rounded-xl border border-surface-600 bg-surface-800 p-6 shadow-panel ${className}`}
+      className={`rounded-xl border border-surface-600/90 bg-surface-800/95 p-6 shadow-panel backdrop-blur-xl ${className}`}
     >
       {children}
     </Tag>
@@ -148,7 +148,7 @@ export function Panel({
 export function HudCard({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div
-      className={`rounded-lg border border-surface-600 bg-surface-800/85 px-4 py-3 shadow-hud backdrop-blur ${className}`}
+      className={`game-hud-card rounded-xl border border-surface-600 bg-surface-800/85 px-4 py-3 shadow-hud backdrop-blur-xl ${className}`}
     >
       {children}
     </div>
