@@ -7,6 +7,7 @@ import EmoteBar from '../components/EmoteBar';
 import PlayerLabels from '../components/PlayerLabels';
 import PoiMenu from '../components/PoiMenu';
 import TouchJoystick from '../components/TouchJoystick';
+import AvatarCustomizer from '../components/AvatarCustomizer';
 import { connectToHub, leaveHub } from '../net/hubConnection';
 import { attachKeyboard } from '../net/input';
 import { useAuthStore } from '../store/auth';
@@ -29,6 +30,7 @@ const CONNECTION_COPY: Record<string, string> = {
 export default function HubPage() {
   const navigate = useNavigate();
   const [showStats, setShowStats] = useState(false);
+  const [showAvatar, setShowAvatar] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [touchDevice, setTouchDevice] = useState(false);
 
@@ -156,7 +158,10 @@ export default function HubPage() {
           </div>
         </HudCard>
 
-        <div className="pointer-events-auto flex gap-2">
+        <div className="pointer-events-auto flex flex-wrap justify-end gap-2">
+          <Button variant="secondary" size="sm" className="shadow-hud" onClick={() => setShowAvatar(true)}>
+            <span aria-hidden="true">✦</span> Personaggio
+          </Button>
           <Button variant="ghost" size="sm" className="bg-surface-900/85 shadow-hud backdrop-blur-xl" onClick={() => setShowChat((value) => !value)}>
             <span aria-hidden="true">◈</span> {showChat ? 'Nascondi chat' : 'Chat'}
           </Button>
@@ -222,6 +227,8 @@ export default function HubPage() {
           </p>
         </div>
       </div>
+
+      {showAvatar && <AvatarCustomizer onClose={() => setShowAvatar(false)} />}
     </div>
   );
 }
