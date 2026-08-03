@@ -4,26 +4,13 @@ import rateLimit from 'express-rate-limit';
 import { sql as raw } from 'drizzle-orm';
 import type { ApiErrorBody } from '@bingo/shared';
 import { env } from '../env';
+import { isAllowedClientOrigin } from '../security/clientOrigins';
 import { db } from '../db/client';
 import { AppError, isAppError } from '../errors';
 import { sanitizeError } from '../logging';
 import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallet';
 import avatarRoutes from './routes/avatar';
-
-const VERCEL_PROJECT_HOST =
-  /^bingo-simulator-client-[a-z0-9-]+-saimone-olas-projects\.vercel\.app$/;
-
-function isAllowedClientOrigin(origin: string): boolean {
-  if (env.clientOrigins.includes(origin)) return true;
-
-  try {
-    const url = new URL(origin);
-    return url.protocol === 'https:' && VERCEL_PROJECT_HOST.test(url.hostname);
-  } catch {
-    return false;
-  }
-}
 
 /**
  * The REST API, mounted into the Colyseus process.
@@ -48,7 +35,7 @@ export function mountApi(app: Application): Application {
         // Requests without an Origin header are server-to-server or health
         // checks. Browser requests must match an explicitly configured origin
         // or one of this project's Vercel production/preview hostnames.
-        if (!origin || isAllowedClientOrigin(origin)) {
+        if (!origin || isAllowedClientOrigin(origin, env.clientOrigins)) {
           callback(null, true);
           return;
         }
