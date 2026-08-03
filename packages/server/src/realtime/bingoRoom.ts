@@ -11,6 +11,7 @@ import {
   bingoPurchaseSchema,
   bingoReadySchema,
   normaliseBingoRoomCode,
+  type AvatarAppearance,
   type BingoActionRejectedPayload,
   type BingoBallCalledPayload,
   type BingoClaimRejectedPayload,
@@ -55,6 +56,14 @@ const TIER_DEFAULTS: Record<
 };
 
 const NPC_NAMES = ['Lucia', 'Bruno', 'Marta', 'Gino', 'Teresa', 'Nico'] as const;
+const NPC_APPEARANCES: AvatarAppearance[] = [
+  { bodyType: 'curvy', skinTone: '#c98f6b', hairStyle: 'curly', hairColor: '#2b2118', shirtColor: '#a13d63', pantsColor: '#332d39', heightCm: 164 },
+  { bodyType: 'athletic', skinTone: '#9b6247', hairStyle: 'buzz', hairColor: '#17131d', shirtColor: '#2f7d70', pantsColor: '#243e62', heightCm: 183 },
+  { bodyType: 'slim', skinTone: '#f3d1bd', hairStyle: 'bob', hairColor: '#6b3b24', shirtColor: '#3b78a8', pantsColor: '#4a4585', heightCm: 171 },
+  { bodyType: 'neutral', skinTone: '#e0b49a', hairStyle: 'short', hairColor: '#e4c07a', shirtColor: '#a36b2c', pantsColor: '#48585c', heightCm: 176 },
+  { bodyType: 'curvy', skinTone: '#70432f', hairStyle: 'long', hairColor: '#17131d', shirtColor: '#6d4bb8', pantsColor: '#6c3656', heightCm: 168 },
+  { bodyType: 'slim', skinTone: '#44291f', hairStyle: 'curly', hairColor: '#17131d', shirtColor: '#b44d3f', pantsColor: '#2f2a61', heightCm: 179 },
+];
 
 type ActionName = keyof typeof BINGO_CLIENT_MESSAGES;
 
@@ -72,6 +81,7 @@ interface BingoParticipant {
   level: number;
   ready: boolean;
   markingMode: BingoMarkingMode;
+  appearance: AvatarAppearance;
   isHost: boolean;
   connected: boolean;
   loading: boolean;
@@ -221,6 +231,7 @@ export class BingoRoom extends Room {
         level: auth.profile.level,
         ready: false,
         markingMode: 'MANUAL',
+        appearance: auth.profile.appearance,
         isHost: this.hostSessionId.length === 0,
         connected: true,
         loading: false,
@@ -295,6 +306,7 @@ export class BingoRoom extends Room {
       ready: participant.ready,
       cardCount: participant.cards.length,
       markingMode: participant.markingMode,
+      appearance: participant.appearance,
       isHost: participant.isHost,
       isNpc: false,
       connected: participant.connected,
@@ -312,6 +324,7 @@ export class BingoRoom extends Room {
         ready: true,
         cardCount: 1,
         markingMode: 'AUTOMATIC',
+        appearance: NPC_APPEARANCES[index] ?? NPC_APPEARANCES[0]!,
         isHost: false,
         isNpc: true,
         connected: true,
