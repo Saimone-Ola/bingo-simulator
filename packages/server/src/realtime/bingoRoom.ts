@@ -212,28 +212,30 @@ export class BingoRoom extends Room {
       this.participants.delete(previousSession);
     }
 
-    const participant: BingoParticipant = preserved
-      ? {
-          ...preserved,
-          sessionId: client.sessionId,
-          connected: true,
-          loading: false,
-          purchaseInProgress: false,
-        }
-      : {
-          sessionId: client.sessionId,
-          userId: auth.userId,
-          displayName: auth.profile.displayName,
-          level: auth.profile.level,
-          ready: false,
-          markingMode: 'MANUAL',
-          isHost: this.hostSessionId.length === 0,
-          connected: true,
-          loading: false,
-          balance: auth.balance,
-          cards: [],
-          purchaseInProgress: false,
-        };
+    const participant: BingoParticipant =
+      preserved ??
+      {
+        sessionId: client.sessionId,
+        userId: auth.userId,
+        displayName: auth.profile.displayName,
+        level: auth.profile.level,
+        ready: false,
+        markingMode: 'MANUAL',
+        isHost: this.hostSessionId.length === 0,
+        connected: true,
+        loading: false,
+        balance: auth.balance,
+        cards: [],
+        purchaseInProgress: false,
+      };
+
+    if (preserved) {
+      // Keep the same object identity while an async purchase/claim is in flight.
+      // Otherwise its database result would update an orphaned participant.
+      preserved.sessionId = client.sessionId;
+      preserved.connected = true;
+      preserved.loading = false;
+    }
 
     if (previousSession === this.hostSessionId) this.hostSessionId = client.sessionId;
     if (!this.hostSessionId) this.hostSessionId = client.sessionId;
