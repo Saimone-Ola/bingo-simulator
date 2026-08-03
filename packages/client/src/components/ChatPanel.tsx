@@ -38,12 +38,12 @@ export default function ChatPanel({ onClose }: { onClose?: () => void }) {
 
   return (
     <section
-      className="pointer-events-auto flex h-72 w-80 max-w-[90vw] flex-col rounded-lg border border-surface-600 bg-surface-800/90 shadow-hud backdrop-blur"
+      className="pointer-events-auto flex h-72 w-80 max-w-[90vw] flex-col rounded-2xl border border-brand-300/20 bg-surface-900/88 shadow-panel backdrop-blur-xl"
       aria-label="Chat della piazza"
     >
-      <header className="flex items-center justify-between border-b border-surface-600 px-3 py-2">
+      <header className="flex items-center justify-between border-b border-surface-600/70 bg-brand-500/5 px-3.5 py-2.5">
         <h2 className="text-2xs font-semibold uppercase tracking-wide text-content-muted">
-          Chat globale
+          ● Chat della piazza
         </h2>
         {onClose && (
           <button
@@ -92,7 +92,7 @@ export default function ChatPanel({ onClose }: { onClose?: () => void }) {
         ))}
       </div>
 
-      <form onSubmit={onSubmit} className="flex gap-2 border-t border-surface-600 p-2">
+      <form onSubmit={onSubmit} className="flex gap-2 border-t border-surface-600/70 bg-surface-950/30 p-2.5">
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value.slice(0, CHAT_MAX_LENGTH))}
@@ -100,7 +100,7 @@ export default function ChatPanel({ onClose }: { onClose?: () => void }) {
           onBlur={() => setTyping(false)}
           placeholder="Scrivi un messaggio…"
           aria-label="Messaggio"
-          className="min-w-0 flex-1 rounded-sm border border-surface-600 bg-surface-850 px-2 py-1.5 text-xs text-content-primary placeholder:text-content-muted focus:border-brand-400 focus:outline-none"
+          className="min-w-0 flex-1 rounded-lg border border-surface-600 bg-surface-950/60 px-3 py-2 text-xs text-content-primary placeholder:text-content-muted focus:border-brand-400 focus:outline-none"
         />
         <Button type="submit" size="sm" disabled={!draft.trim()}>
           Invia
