@@ -84,7 +84,7 @@ export class BingoRoom extends Room {
   override maxClients = 20;
 
   private roomCode = 'TESI-2026';
-  private readonly roomName = 'Sala Tesi — Bingo Italiano';
+  private readonly displayRoomName = 'Sala Tesi — Bingo Italiano';
   private readonly phases = new LobbyStateMachine();
   private readonly participants = new Map<string, BingoParticipant>();
   private readonly byUser = new Map<string, string>();
@@ -322,7 +322,7 @@ export class BingoRoom extends Room {
 
   private snapshotFor(participant: BingoParticipant): BingoSnapshotPayload {
     return {
-      roomName: this.roomName,
+      roomName: this.displayRoomName,
       roomCode: this.roomCode,
       round: this.round,
       phase: this.phases.phase,
