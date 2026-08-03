@@ -2,7 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
-import type { BingoPlayerSummary, ItalianBingoCard } from '@bingo/shared';
+import type { AvatarAppearance, BingoPlayerSummary, ItalianBingoCard } from '@bingo/shared';
+import ProceduralCharacter, {
+  type CharacterAnimationState,
+  type CharacterPersonality,
+} from './ProceduralCharacter';
 
 export interface BingoMarkInteraction {
   cellIndex: number;
@@ -15,6 +19,7 @@ interface BingoRoomSceneProps {
   currentNumber: number | null;
   drawnNumbers: number[];
   players: BingoPlayerSummary[];
+  mySessionId: string;
   manualMarking: boolean;
   markerColor: string;
   focusCard: boolean;
@@ -210,7 +215,23 @@ function SeatedCameraController({
   return null;
 }
 
-function RoomShell() {
+function RoomShell({
+  players,
+  mySessionId,
+  currentNumber,
+  drawnCount,
+  reducedMotion,
+}: {
+  players: BingoPlayerSummary[];
+  mySessionId: string;
+  currentNumber: number | null;
+  drawnCount: number;
+  reducedMotion: boolean;
+}) {
+  const visiblePlayers = useMemo(
+    () => players.filter((player) => player.sessionId !== mySessionId),
+    [mySessionId, players],
+  );
   const tables = useMemo(
     () => [
       [-5.8, -0.7],
@@ -276,7 +297,15 @@ function RoomShell() {
       </group>
 
       {tables.map(([x, z], index) => (
-        <BackgroundTable key={`${x}-${z}`} position={[x, z]} phase={index * 0.71} />
+        <BackgroundTable
+          key={index}
+          position={[x, z]}
+          phase={index * 0.71}
+          player={visiblePlayers[index]}
+          currentNumber={currentNumber}
+          drawnCount={drawnCount}
+          reducedMotion={reducedMotion}
+        />
       ))}
 
       {[-6.3, -2.1, 2.1, 6.3].map((x) => (
@@ -292,20 +321,58 @@ function RoomShell() {
   );
 }
 
+const PERSONALITIES: CharacterPersonality[] = [
+  'CALM',
+  'NERVOUS',
+  'LOUD',
+  'LUCKY',
+  'GRUMPY',
+  'DISTRACTED',
+  'PRANKSTER',
+];
+
+function stableHash(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash);
+}
+
+function guestAnimation(
+  player: BingoPlayerSummary,
+  currentNumber: number | null,
+  drawnCount: number,
+): CharacterAnimationState {
+  if (currentNumber === null) return 'SEATED_IDLE';
+  const reaction = (stableHash(player.sessionId) + drawnCount) % 11;
+  if (reaction === 0) return 'CELEBRATE';
+  if (reaction === 1) return 'LAUGH';
+  if (reaction === 2) return 'TALK';
+  if (reaction === 3) return 'DISAPPOINTED';
+  if (reaction === 4 || reaction === 5) return 'MARK_NUMBER';
+  return reaction % 2 === 0 ? 'LOOK_AT_CARD' : 'LOOK_AT_STAGE';
+}
+
 function BackgroundTable({
   position,
   phase,
+  player,
+  currentNumber,
+  drawnCount,
+  reducedMotion,
 }: {
   position: readonly [number, number];
   phase: number;
+  player: BingoPlayerSummary | undefined;
+  currentNumber: number | null;
+  drawnCount: number;
+  reducedMotion: boolean;
 }) {
-  const guest = useRef<THREE.Group>(null);
-
-  useFrame(({ clock }) => {
-    if (!guest.current) return;
-    guest.current.rotation.y = Math.sin(clock.elapsedTime * 0.45 + phase) * 0.06;
-    guest.current.position.y = Math.sin(clock.elapsedTime * 0.7 + phase) * 0.012;
-  });
+  const personality = player
+    ? PERSONALITIES[stableHash(player.sessionId) % PERSONALITIES.length] ?? 'CALM'
+    : 'CALM';
 
   return (
     <group position={[position[0], 0, position[1]]}>
@@ -318,20 +385,26 @@ function BackgroundTable({
           <meshStandardMaterial color="#241a1b" roughness={0.8} />
         </mesh>
       ))}
-      <group ref={guest} position={[0, 0.92, -0.36]}>
-        <mesh position={[0, 0.38, 0]} castShadow>
-          <capsuleGeometry args={[0.2, 0.36, 5, 12]} />
-          <meshStandardMaterial color="#374151" roughness={0.78} />
-        </mesh>
-        <mesh position={[0, 0.86, 0]} castShadow>
-          <sphereGeometry args={[0.22, 16, 12]} />
-          <meshStandardMaterial color="#b98268" roughness={0.82} />
-        </mesh>
-        <mesh position={[0, 0.99, -0.04]} castShadow>
-          <sphereGeometry args={[0.225, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
-          <meshStandardMaterial color="#2a2024" roughness={0.92} />
-        </mesh>
+      <group position={[0, 0.31, -0.43]}>
+        <RoundedBox args={[0.72, 0.12, 0.68]} radius={0.08} smoothness={2}>
+          <meshStandardMaterial color="#35252d" roughness={0.82} />
+        </RoundedBox>
+        <RoundedBox args={[0.72, 0.9, 0.12]} radius={0.08} smoothness={2} position={[0, 0.5, -0.29]}>
+          <meshStandardMaterial color="#35252d" roughness={0.82} />
+        </RoundedBox>
       </group>
+      {player && (
+        <ProceduralCharacter
+          appearance={player.appearance}
+          state={guestAnimation(player, currentNumber, drawnCount)}
+          personality={personality}
+          position={[0, 0.05, -0.35]}
+          rotationY={Math.PI}
+          scale={0.72}
+          phase={phase}
+          reducedMotion={reducedMotion}
+        />
+      )}
     </group>
   );
 }
@@ -339,10 +412,22 @@ function BackgroundTable({
 function Stage({
   currentNumber,
   drawnCount,
+  reducedMotion,
 }: {
   currentNumber: number | null;
   drawnCount: number;
+  reducedMotion: boolean;
 }) {
+  const hostAppearance: AvatarAppearance = {
+    bodyType: 'athletic',
+    skinTone: '#b97f64',
+    hairStyle: 'short',
+    hairColor: '#33252b',
+    shirtColor: '#463b79',
+    pantsColor: '#24213f',
+    heightCm: 181,
+  };
+
   return (
     <group>
       <group position={[0, 3.6, -9.78]}>
@@ -351,7 +436,7 @@ function Stage({
         </RoundedBox>
         <CanvasText text="NUMERO ESTRATTO" position={[0, 0.62, 0.12]} color="#c4b5fd" width={3.2} height={0.34} fontScale={0.42} />
         <CanvasText text={currentNumber?.toString() ?? '—'} position={[0, -0.08, 0.13]} color="#ffd166" width={2.1} height={1.05} fontScale={0.78} />
-        <CanvasText text={`${drawnCount} / 90`} position={[0, -0.78, 0.12]} color="#8ee8de" width={2.2} height={0.28} fontScale={0.46} />
+        <CanvasText text={drawnCount + ' / 90'} position={[0, -0.78, 0.12]} color="#8ee8de" width={2.2} height={0.28} fontScale={0.46} />
       </group>
 
       <group position={[-2.25, 1.18, -7.82]}>
@@ -373,19 +458,17 @@ function Stage({
         <RoundedBox args={[2.3, 0.18, 0.92]} radius={0.08} smoothness={2} position={[0, 0.56, 0]} castShadow>
           <meshStandardMaterial color="#5a332d" roughness={0.62} />
         </RoundedBox>
-        <mesh position={[0, 1.15, -0.12]} castShadow>
-          <capsuleGeometry args={[0.25, 0.48, 6, 14]} />
-          <meshStandardMaterial color="#3b3264" roughness={0.72} />
-        </mesh>
-        <mesh position={[0, 1.8, -0.12]} castShadow>
-          <sphereGeometry args={[0.27, 20, 16]} />
-          <meshStandardMaterial color="#b97f64" roughness={0.82} />
-        </mesh>
-        <mesh position={[0, 1.96, -0.18]}>
-          <sphereGeometry args={[0.275, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
-          <meshStandardMaterial color="#33252b" roughness={0.9} />
-        </mesh>
-        <mesh position={[0.25, 1.56, 0.22]} rotation={[0.3, 0, -0.25]}>
+        <ProceduralCharacter
+          appearance={hostAppearance}
+          state={currentNumber === null ? 'IDLE' : drawnCount % 4 === 0 ? 'TALK' : 'LOOK_AT_STAGE'}
+          personality="LOUD"
+          position={[0, 0.08, -0.12]}
+          rotationY={0}
+          scale={0.76}
+          phase={1.7}
+          reducedMotion={reducedMotion}
+        />
+        <mesh position={[0.3, 1.58, 0.24]} rotation={[0.3, 0, -0.25]}>
           <cylinderGeometry args={[0.035, 0.045, 0.55, 12]} />
           <meshStandardMaterial color="#1a1723" metalness={0.5} roughness={0.35} />
         </mesh>
@@ -602,10 +685,12 @@ function FirstPersonHands({
   markerColor,
   lastMark,
   reducedMotion,
+  appearance,
 }: {
   markerColor: string;
   lastMark: BingoMarkInteraction | null;
   reducedMotion: boolean;
+  appearance: AvatarAppearance;
 }) {
   const rightHand = useRef<THREE.Group>(null);
   const animationStart = useRef(0);
@@ -638,21 +723,21 @@ function FirstPersonHands({
       <group position={[-1.72, 1.02, 4.13]} rotation={[0.16, -0.2, -0.12]}>
         <mesh castShadow>
           <capsuleGeometry args={[0.11, 0.42, 6, 12]} />
-          <meshStandardMaterial color="#b98268" roughness={0.84} />
+          <meshStandardMaterial color={appearance.skinTone} roughness={0.84} />
         </mesh>
         <mesh position={[0, -0.29, 0]}>
           <cylinderGeometry args={[0.14, 0.18, 0.32, 16]} />
-          <meshStandardMaterial color="#3f3a67" roughness={0.76} />
+          <meshStandardMaterial color={appearance.shirtColor} roughness={0.76} />
         </mesh>
       </group>
       <group ref={rightHand} position={[1.72, 1.05, 4.12]} rotation={[0.22, 0.18, 0.12]}>
         <mesh castShadow>
           <capsuleGeometry args={[0.11, 0.42, 6, 12]} />
-          <meshStandardMaterial color="#b98268" roughness={0.84} />
+          <meshStandardMaterial color={appearance.skinTone} roughness={0.84} />
         </mesh>
         <mesh position={[0, -0.29, 0]}>
           <cylinderGeometry args={[0.14, 0.18, 0.32, 16]} />
-          <meshStandardMaterial color="#3f3a67" roughness={0.76} />
+          <meshStandardMaterial color={appearance.shirtColor} roughness={0.76} />
         </mesh>
         <mesh position={[-0.02, 0.23, -0.04]} rotation={[0, 0, Math.PI / 2]} castShadow>
           <cylinderGeometry args={[0.027, 0.027, 0.42, 12]} />
@@ -668,6 +753,8 @@ function Scene({
   cardIndex,
   currentNumber,
   drawnNumbers,
+  players,
+  mySessionId,
   manualMarking,
   markerColor,
   focusCard,
@@ -675,8 +762,18 @@ function Scene({
   lastMark,
   onMarkCell,
   onSelectMarker,
-}: Omit<BingoRoomSceneProps, 'players'>) {
+}: BingoRoomSceneProps) {
   const drawn = useMemo(() => new Set(drawnNumbers), [drawnNumbers]);
+  const myAppearance =
+    players.find((player) => player.sessionId === mySessionId)?.appearance ?? {
+      bodyType: 'neutral',
+      skinTone: '#e0b49a',
+      hairStyle: 'short',
+      hairColor: '#2b2118',
+      shirtColor: '#7c5cff',
+      pantsColor: '#4a4585',
+      heightCm: 175,
+    };
 
   return (
     <>
@@ -700,8 +797,14 @@ function Scene({
       />
 
       <SeatedCameraController focusCard={focusCard} reducedMotion={reducedMotion} />
-      <RoomShell />
-      <Stage currentNumber={currentNumber} drawnCount={drawnNumbers.length} />
+      <RoomShell
+        players={players}
+        mySessionId={mySessionId}
+        currentNumber={currentNumber}
+        drawnCount={drawnNumbers.length}
+        reducedMotion={reducedMotion}
+      />
+      <Stage currentNumber={currentNumber} drawnCount={drawnNumbers.length} reducedMotion={reducedMotion} />
       <PlayerTable />
       {card && (
         <ItalianCard3D
@@ -714,7 +817,7 @@ function Scene({
         />
       )}
       <MarkerTray selectedColor={markerColor} onSelect={onSelectMarker} />
-      <FirstPersonHands markerColor={markerColor} lastMark={lastMark} reducedMotion={reducedMotion} />
+      <FirstPersonHands markerColor={markerColor} lastMark={lastMark} reducedMotion={reducedMotion} appearance={myAppearance} />
     </>
   );
 }
@@ -737,6 +840,8 @@ export default function BingoRoomScene(props: BingoRoomSceneProps) {
         cardIndex={props.cardIndex}
         currentNumber={props.currentNumber}
         drawnNumbers={props.drawnNumbers}
+        players={props.players}
+        mySessionId={props.mySessionId}
         manualMarking={props.manualMarking}
         markerColor={props.markerColor}
         focusCard={props.focusCard}
