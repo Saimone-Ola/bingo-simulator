@@ -1,49 +1,31 @@
 import { eq } from 'drizzle-orm';
+import type { AvatarAppearance } from '@bingo/shared';
 import { db } from '../db/client';
 import { avatars, users } from '../db/schema';
 
 /**
- * The projection the hub needs about a player: identity plus appearance.
- *
- * Nothing here is sensitive. Everything this returns ends up replicated to
- * every other player in the room, so the query selects columns explicitly
- * rather than returning the user row - a `select *` here would put the
- * password hash one careless spread away from the wire.
+ * The projection every realtime room needs. Sensitive identity columns are
+ * deliberately excluded because this object is replicated to other players.
  */
 export interface PlayerProfile {
   userId: string;
   displayName: string;
   level: number;
   status: 'active' | 'suspended' | 'deleted';
-  appearance: {
-    bodyType: string;
-    skinTone: string;
-    hairStyle: string;
-    hairColor: string;
-    shirtColor: string;
-    pantsColor: string;
-    heightCm: number;
-  };
+  appearance: AvatarAppearance;
 }
 
-/** Fallback colours when a player has no avatar row yet. */
-const DEFAULT_APPEARANCE: PlayerProfile['appearance'] = {
+/** Fallback colours when a legacy player has no avatar row yet. */
+export const DEFAULT_APPEARANCE: AvatarAppearance = {
   bodyType: 'neutral',
   skinTone: '#e0b49a',
   hairStyle: 'short',
   hairColor: '#2b2118',
   shirtColor: '#7c5cff',
-  // Deliberately lighter than surface-600: the first draft used the border
-  // token and the legs vanished against the plaza floor.
   pantsColor: '#4a4585',
   heightCm: 175,
 };
 
-/**
- * Derives the two garment colours from the avatar's stored `colorway`.
- * Phase 7 replaces this with real equipped items; the shape is already here so
- * the client's rendering path does not change when it does.
- */
 function readColorway(colorway: unknown, key: string, fallback: string): string {
   if (typeof colorway !== 'object' || colorway === null) return fallback;
   const value = (colorway as Record<string, unknown>)[key];
@@ -77,13 +59,52 @@ export async function loadPlayerProfile(userId: string): Promise<PlayerProfile |
     level: row.level,
     status: row.status,
     appearance: {
-      bodyType: row.bodyType ?? DEFAULT_APPEARANCE.bodyType,
+      bodyType: (row.bodyType ?? DEFAULT_APPEARANCE.bodyType) as AvatarAppearance['bodyType'],
       skinTone: row.skinTone ?? DEFAULT_APPEARANCE.skinTone,
-      hairStyle: row.hairStyle ?? DEFAULT_APPEARANCE.hairStyle,
+      hairStyle: (row.hairStyle ?? DEFAULT_APPEARANCE.hairStyle) as AvatarAppearance['hairStyle'],
       hairColor: row.hairColor ?? DEFAULT_APPEARANCE.hairColor,
       shirtColor: readColorway(row.colorway, 'shirt', DEFAULT_APPEARANCE.shirtColor),
       pantsColor: readColorway(row.colorway, 'pants', DEFAULT_APPEARANCE.pantsColor),
       heightCm: row.heightCm ?? DEFAULT_APPEARANCE.heightCm,
     },
   };
+}
+
+/**
+ * Persists a complete appearance in one transaction-sized statement. The
+ * unique user key makes the operation idempotent and also repairs old accounts
+ * that predate the avatar row.
+ */
+export async function saveAvatarAppearance(
+  userId: string,
+  appearance: AvatarAppearance,
+): Promise<AvatarAppearance> {
+  const values = {
+    userId,
+    bodyType: appearance.bodyType,
+    skinTone: appearance.skinTone,
+    hairStyle: appearance.hairStyle,
+    hairColor: appearance.hairColor,
+    heightCm: appearance.heightCm,
+    colorway: { shirt: appearance.shirtColor, pants: appearance.pantsColor },
+    updatedAt: new Date(),
+  };
+
+  await db
+    .insert(avatars)
+    .values(values)
+    .onConflictDoUpdate({
+      target: avatars.userId,
+      set: {
+        bodyType: values.bodyType,
+        skinTone: values.skinTone,
+        hairStyle: values.hairStyle,
+        hairColor: values.hairColor,
+        heightCm: values.heightCm,
+        colorway: values.colorway,
+        updatedAt: values.updatedAt,
+      },
+    });
+
+  return appearance;
 }
