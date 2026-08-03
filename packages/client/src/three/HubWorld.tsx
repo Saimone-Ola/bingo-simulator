@@ -109,7 +109,7 @@ function WorldSign({
   color: string;
 }) {
   return (
-    <Html position={position} center distanceFactor={13} style={{ pointerEvents: 'none' }}>
+    <Html position={position} center distanceFactor={13} zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
       <div className="world-sign" style={{ borderColor: color, boxShadow: `0 12px 34px -16px ${color}` }}>
         <span className="world-sign-dot" style={{ background: color, boxShadow: `0 0 14px ${color}` }} />
         <div>
@@ -469,7 +469,7 @@ function PointsOfInterest({ currentPhase }: { currentPhase: number }) {
               opacity={poi.unlocked ? 1 : 0.5}
             />
           </mesh>
-          <Html position={[0, 0.35, 0]} center distanceFactor={16} style={{ pointerEvents: 'none' }}>
+          <Html position={[0, 0.35, 0]} center distanceFactor={16} zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
             <div className={`poi-chip ${poi.unlocked ? 'poi-chip-ready' : ''}`}>
               {poi.unlocked ? 'ENTRA' : 'PRESTO'} · {poi.label}
             </div>
