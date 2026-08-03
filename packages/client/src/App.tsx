@@ -6,6 +6,7 @@ import { useAuthStore } from './store/auth';
 
 // Developer-facing and rarely opened: never ship it in the entry chunk.
 const StyleGuidePage = lazy(() => import('./routes/StyleGuidePage'));
+const BingoPage = lazy(() => import('./routes/BingoPage'));
 
 /** Routes that need a session; anonymous visitors land back on the auth page. */
 function Protected({ children }: { children: RouteProps['element'] }) {
@@ -37,6 +38,22 @@ export default function App() {
           element={
             <Protected>
               <HubPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/bingo"
+          element={
+            <Protected>
+              <Suspense
+                fallback={
+                  <div className="grid h-full place-items-center text-content-muted">
+                    Apertura della Sala Bingo…
+                  </div>
+                }
+              >
+                <BingoPage />
+              </Suspense>
             </Protected>
           }
         />
