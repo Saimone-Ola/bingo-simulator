@@ -4,6 +4,7 @@ import { env } from '../env';
 import { mountApi } from '../http/app';
 import { configureRealtimeCors } from './cors';
 import { HubRoom } from './hubRoom';
+import { BingoRoom } from './bingoRoom';
 
 /**
  * The whole server: REST API, matchmaking and WebSocket rooms, on one port.
@@ -34,6 +35,7 @@ export function createGameServer(): ColyseusServer {
   });
 
   gameServer.define(ROOM_NAMES.hub, HubRoom);
+  gameServer.define(ROOM_NAMES.bingo, BingoRoom).filterBy(['roomCode']);
 
   return gameServer;
 }
