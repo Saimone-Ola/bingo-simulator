@@ -6,3 +6,6 @@ export * from './errors';
 export * from './chat';
 export * from './world';
 export * from './protocol';
+
+export * from './avatar';
+export * from './bingo';
