@@ -17,7 +17,7 @@ RUN corepack enable
 # toolchain has to be here in case this architecture is not one of them.
 # pnpm also needs git because the lockfile contains a git-sourced dependency.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make g++ git \
+ && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -53,7 +53,7 @@ WORKDIR /app
 
 # Never run the game server as root.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make g++ \
+ && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd --system --gid 1001 bingo \
  && useradd --system --uid 1001 --gid bingo bingo
