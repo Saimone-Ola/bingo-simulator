@@ -10,6 +10,20 @@ import { sanitizeError } from '../logging';
 import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallet';
 
+const VERCEL_PROJECT_HOST =
+  /^bingo-simulator-client-[a-z0-9-]+-saimone-olas-projects\\.vercel\\.app$/;
+
+function isAllowedClientOrigin(origin: string): boolean {
+  if (env.clientOrigins.includes(origin)) return true;
+
+  try {
+    const url = new URL(origin);
+    return url.protocol === 'https:' && VERCEL_PROJECT_HOST.test(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The REST API, mounted into the Colyseus process.
  *
@@ -29,7 +43,16 @@ export function mountApi(app: Application): Application {
 
   app.use(
     cors({
-      origin: env.clientOrigins.length > 0 ? env.clientOrigins : true,
+      origin: (origin, callback) => {
+        // Requests without an Origin header are server-to-server or health
+        // checks. Browser requests must match an explicitly configured origin
+        // or one of this project's Vercel production/preview hostnames.
+        if (!origin || isAllowedClientOrigin(origin)) {
+          callback(null, true);
+          return;
+        }
+        callback(null, false);
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     }),
