@@ -61,7 +61,7 @@ function CanvasText({
       context.fillStyle = color;
       context.textAlign = 'center';
       context.textBaseline = 'middle';
-      context.font = \`800 \${Math.round(canvas.height * fontScale)}px Inter, system-ui, sans-serif\`;
+      context.font = `800 ${Math.round(canvas.height * fontScale)}px Inter, system-ui, sans-serif`;
       context.fillText(text, canvas.width / 2, canvas.height / 2, canvas.width * 0.94);
     }
     const next = new THREE.CanvasTexture(canvas);
@@ -351,7 +351,7 @@ function Stage({
         </RoundedBox>
         <CanvasText text="NUMERO ESTRATTO" position={[0, 0.62, 0.12]} color="#c4b5fd" width={3.2} height={0.34} fontScale={0.42} />
         <CanvasText text={currentNumber?.toString() ?? '—'} position={[0, -0.08, 0.13]} color="#ffd166" width={2.1} height={1.05} fontScale={0.78} />
-        <CanvasText text={\`\${drawnCount} / 90\`} position={[0, -0.78, 0.12]} color="#8ee8de" width={2.2} height={0.28} fontScale={0.46} />
+        <CanvasText text={`${drawnCount} / 90`} position={[0, -0.78, 0.12]} color="#8ee8de" width={2.2} height={0.28} fontScale={0.46} />
       </group>
 
       <group position={[-2.25, 1.18, -7.82]}>
@@ -536,7 +536,7 @@ function ItalianCard3D({
       <RoundedBox args={[3.35, 1.28, 0.055]} radius={0.06} smoothness={2} position={[0, 0.02, -0.02]} receiveShadow castShadow>
         <meshStandardMaterial color="#efe4c8" roughness={0.72} />
       </RoundedBox>
-      <CanvasText text={\`CARTELLA \${cardIndex + 1} · BINGO ITALIANO\`} position={[0, 0.53, 0.045]} color="#5e4426" width={2.8} height={0.2} fontScale={0.48} />
+      <CanvasText text={`CARTELLA ${cardIndex + 1} · BINGO ITALIANO`} position={[0, 0.53, 0.045]} color="#5e4426" width={2.8} height={0.2} fontScale={0.48} />
 
       {card.cells.map((number, cellIndex) => {
         const row = Math.floor(cellIndex / 9);
