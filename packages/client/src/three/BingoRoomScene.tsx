@@ -27,8 +27,8 @@ interface BingoRoomSceneProps {
 const MARKER_COLORS = ['#ef4444', '#2563eb', '#16a34a', '#7c3aed'] as const;
 const CELL_WIDTH = 0.33;
 const CELL_HEIGHT = 0.26;
-const CARD_Y = 0.9;
-const CARD_Z = 3.02;
+const CARD_Y = 1.08;
+const CARD_Z = 3.35;
 
 type Vector3Tuple = [number, number, number];
 
@@ -532,7 +532,7 @@ function ItalianCard3D({
   const { gl } = useThree();
 
   return (
-    <group position={[0, CARD_Y, CARD_Z]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group position={[0, CARD_Y, CARD_Z]} rotation={[-Math.PI / 2 + 0.22, 0, 0]}>
       <RoundedBox args={[3.35, 1.28, 0.055]} radius={0.06} smoothness={2} position={[0, 0.02, -0.02]} receiveShadow castShadow>
         <meshStandardMaterial color="#efe4c8" roughness={0.72} />
       </RoundedBox>
