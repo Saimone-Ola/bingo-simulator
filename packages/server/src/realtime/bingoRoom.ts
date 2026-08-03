@@ -124,7 +124,10 @@ export class BingoRoom extends Room {
       client.send(BINGO_SERVER_MESSAGES.pong, pong);
     });
 
-    this.clock.setInterval(() => this.drawBall(), BINGO_DRAW_INTERVAL_MS);
+    // Poll the due time rather than using a 5 s fixed interval: the first draw
+    // starts 1.8 s after join, so a fixed interval would drift by more than
+    // three seconds and make the visible countdown dishonest.
+    this.clock.setInterval(() => this.drawBall(), 250);
   }
 
   override async onAuth(_client: Client, options: unknown): Promise<BingoAuth> {
