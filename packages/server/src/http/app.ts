@@ -12,7 +12,7 @@ import walletRoutes from './routes/wallet';
 import avatarRoutes from './routes/avatar';
 
 const VERCEL_PROJECT_HOST =
-  /^bingo-simulator-client-[a-z0-9-]+-saimone-olas-projects\\.vercel\\.app$/;
+  /^bingo-simulator-client-[a-z0-9-]+-saimone-olas-projects\.vercel\.app$/;
 
 function isAllowedClientOrigin(origin: string): boolean {
   if (env.clientOrigins.includes(origin)) return true;
