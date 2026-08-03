@@ -29,6 +29,7 @@ import { useAuthStore } from '../store/auth';
 import type { BingoMarkInteraction } from '../three/BingoRoomScene';
 
 const BingoRoomScene = lazy(() => import('../three/BingoRoomScene'));
+const AvatarCustomizer = lazy(() => import('../components/AvatarCustomizer'));
 
 const EMPTY_CONFIG: RoomBingoConfig = {
   minPlayers: 2,
@@ -492,6 +493,7 @@ function ImmersiveGame({
               currentNumber={snapshot.currentNumber}
               drawnNumbers={snapshot.drawnNumbers}
               players={snapshot.players}
+              mySessionId={snapshot.mySessionId}
               manualMarking={manual}
               markerColor={markerColor}
               focusCard={focusCard}
@@ -814,6 +816,7 @@ export default function BingoPage() {
   const [copied, setCopied] = useState(false);
   const [immersive, setImmersive] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [customisingAvatar, setCustomisingAvatar] = useState(false);
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -917,6 +920,13 @@ export default function BingoPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill status={status} phase={snapshot?.phase} />
+            <button
+              type="button"
+              onClick={() => setCustomisingAvatar(true)}
+              className="rounded-xl border border-violet-300/25 bg-violet-400/12 px-4 py-2.5 text-xs font-black text-violet-100 hover:bg-violet-400/20"
+            >
+              ◉ Il mio personaggio
+            </button>
             <button type="button" onClick={invite} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-black hover:bg-white/10">{copied ? '✓ Link copiato' : '⇧ Invita amici'}</button>
             <button type="button" onClick={newRoom} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-black hover:bg-white/10">+ Nuova sala</button>
           </div>
@@ -1047,6 +1057,18 @@ export default function BingoPage() {
             ) : notice}
           </button>
         </div>
+      )}
+
+      {customisingAvatar && (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 grid place-items-center bg-[#080713]/90 text-sm text-white/60">
+              Apertura atelier…
+            </div>
+          }
+        >
+          <AvatarCustomizer onClose={() => setCustomisingAvatar(false)} />
+        </Suspense>
       )}
 
       <ResponsiblePlayNotice className="relative z-10 mx-auto max-w-5xl px-4 pb-5" />
