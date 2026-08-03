@@ -49,7 +49,18 @@ interface QueuedMessage {
   payload: unknown;
 }
 
+interface PendingPurchase {
+  payload: {
+    quantity: number;
+    markingMode: BingoMarkingMode;
+    requestId: string;
+  };
+  attempts: number;
+  timer: number | null;
+}
+
 const queuedMessages: QueuedMessage[] = [];
+let pendingPurchase: PendingPurchase | null = null;
 const INITIAL_CONNECT_DELAYS_MS = [0, 1_200, 2_500, 5_000] as const;
 
 function wait(ms: number): Promise<void> {
@@ -62,7 +73,14 @@ function sendBingoMessage(type: string, payload: unknown): void {
     return;
   }
   if (!deliberateLeave) {
-    queuedMessages.push({ type, payload });
+    const request = payload as { requestId?: unknown };
+    const alreadyQueued =
+      typeof request.requestId === 'string' &&
+      queuedMessages.some((message) => {
+        const queued = message.payload as { requestId?: unknown };
+        return message.type === type && queued.requestId === request.requestId;
+      });
+    if (!alreadyQueued) queuedMessages.push({ type, payload });
     if (queuedMessages.length > 40) queuedMessages.shift();
   }
 }
@@ -70,6 +88,27 @@ function sendBingoMessage(type: string, payload: unknown): void {
 function flushQueuedMessages(joined: Room): void {
   const pending = queuedMessages.splice(0);
   for (const message of pending) joined.send(message.type, message.payload);
+}
+
+function clearPendingPurchase(): void {
+  if (pendingPurchase?.timer !== null && pendingPurchase?.timer !== undefined) {
+    window.clearTimeout(pendingPurchase.timer);
+  }
+  pendingPurchase = null;
+}
+
+function schedulePurchaseRetry(): void {
+  if (!pendingPurchase || pendingPurchase.attempts >= 8) {
+    if (pendingPurchase?.attempts && pendingPurchase.attempts >= 8) clearPendingPurchase();
+    return;
+  }
+  if (pendingPurchase.timer !== null) window.clearTimeout(pendingPurchase.timer);
+  pendingPurchase.timer = window.setTimeout(() => {
+    if (!pendingPurchase || deliberateLeave) return;
+    pendingPurchase.attempts += 1;
+    sendBingoMessage(BINGO_CLIENT_MESSAGES.purchaseCards, pendingPurchase.payload);
+    schedulePurchaseRetry();
+  }, 2_500);
 }
 
 export async function connectToBingo(
@@ -116,11 +155,25 @@ export async function connectToBingo(
   }
   room = joined;
 
-  joined.onMessage(BINGO_SERVER_MESSAGES.snapshot, handlers.onSnapshot);
+  joined.onMessage(BINGO_SERVER_MESSAGES.snapshot, (payload: BingoSnapshotPayload) => {
+    if (payload.myCards.length > 0) clearPendingPurchase();
+    handlers.onSnapshot(payload);
+  });
   joined.onMessage(BINGO_SERVER_MESSAGES.ballCalled, handlers.onBall);
   joined.onMessage(BINGO_SERVER_MESSAGES.winner, handlers.onWinner);
   joined.onMessage(BINGO_SERVER_MESSAGES.claimRejected, handlers.onClaimRejected);
-  joined.onMessage(BINGO_SERVER_MESSAGES.actionRejected, handlers.onActionRejected);
+  joined.onMessage(
+    BINGO_SERVER_MESSAGES.actionRejected,
+    (payload: BingoActionRejectedPayload) => {
+      if (
+        payload.action === 'purchaseCards' &&
+        payload.reason !== 'purchase_in_progress'
+      ) {
+        clearPendingPurchase();
+      }
+      handlers.onActionRejected(payload);
+    },
+  );
 
   joined.onLeave((code) => {
     if (version !== connectionVersion) return;
@@ -148,11 +201,18 @@ export function purchaseBingoCards(
   quantity: number,
   markingMode: BingoMarkingMode,
 ): void {
-  sendBingoMessage(BINGO_CLIENT_MESSAGES.purchaseCards, {
-    quantity,
-    markingMode,
-    requestId: requestId('purchase'),
-  });
+  if (pendingPurchase) return;
+  pendingPurchase = {
+    payload: {
+      quantity,
+      markingMode,
+      requestId: requestId('purchase'),
+    },
+    attempts: 1,
+    timer: null,
+  };
+  sendBingoMessage(BINGO_CLIENT_MESSAGES.purchaseCards, pendingPurchase.payload);
+  schedulePurchaseRetry();
 }
 
 export function setBingoReady(ready: boolean): void {
@@ -207,6 +267,7 @@ export async function leaveBingo(): Promise<void> {
   deliberateLeave = true;
   connectionVersion += 1;
   queuedMessages.length = 0;
+  clearPendingPurchase();
   if (reconnectTimer !== null) {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
