@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
+import * as THREE from 'three';
 import {
   AVATAR_BODY_TYPES,
   AVATAR_HAIR_STYLES,
@@ -7,6 +9,7 @@ import {
   type AvatarHairStyle,
 } from '@bingo/shared';
 import { api } from '../lib/api';
+import ProceduralCharacter from '../three/ProceduralCharacter';
 import { Button, HudCard } from './ui';
 
 const DEFAULT_APPEARANCE: AvatarAppearance = {
@@ -124,55 +127,51 @@ function ColourRow({
 }
 
 function AvatarPreview({ appearance }: { appearance: AvatarAppearance }) {
-  const width = {
-    neutral: 1,
-    slim: 0.82,
-    athletic: 1.18,
-    curvy: 1.12,
-  }[appearance.bodyType];
-
-  const hairStyle = {
-    short: { width: 68, height: 30, top: 14, radius: '50% 50% 34% 34%' },
-    buzz: { width: 62, height: 20, top: 17, radius: '50% 50% 30% 30%' },
-    bob: { width: 74, height: 58, top: 13, radius: '48% 48% 38% 38%' },
-    curly: { width: 76, height: 36, top: 9, radius: '50%' },
-    long: { width: 76, height: 86, top: 12, radius: '48% 48% 38% 38%' },
-  }[appearance.hairStyle];
-
   return (
-    <div className="relative mx-auto h-72 w-52 overflow-hidden rounded-2xl border border-brand-300/20 bg-gradient-to-b from-[#4c3ca5] via-[#30266d] to-[#181333] shadow-panel">
-      <div className="absolute inset-x-0 bottom-3 mx-auto h-8 w-32 rounded-full bg-black/25 blur-md" />
-      <div className="absolute inset-x-0 top-5 mx-auto h-60 w-28">
-        <div
-          className="absolute left-1/2 z-0 -translate-x-1/2"
-          style={{
-            width: hairStyle.width,
-            height: hairStyle.height,
-            top: hairStyle.top,
-            borderRadius: hairStyle.radius,
-            backgroundColor: appearance.hairColor,
-          }}
+    <div
+      className="relative mx-auto h-72 w-60 overflow-hidden rounded-2xl border border-brand-300/25 bg-gradient-to-b from-[#493a9b] via-[#28215b] to-[#121026] shadow-panel"
+      aria-label="Anteprima tridimensionale del personaggio"
+    >
+      <Canvas
+        shadows
+        dpr={[1, 1.35]}
+        camera={{ position: [0, 0.92, 4.2], fov: 38, near: 0.1, far: 20 }}
+        gl={{ antialias: true, powerPreference: 'high-performance' }}
+        onCreated={({ gl }) => {
+          gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.toneMappingExposure = 1.08;
+        }}
+      >
+        <ambientLight intensity={1.35} color="#b9abff" />
+        <hemisphereLight args={['#fff1d3', '#1e173d', 1.4]} />
+        <directionalLight
+          position={[2.5, 4, 3]}
+          intensity={3}
+          color="#ffe0b3"
+          castShadow
+          shadow-mapSize-width={512}
+          shadow-mapSize-height={512}
         />
-        <div
-          className="absolute left-1/2 top-7 z-10 h-16 w-16 -translate-x-1/2 rounded-full border-2 border-white/20"
-          style={{ backgroundColor: appearance.skinTone }}
-        >
-          <span className="absolute left-4 top-7 h-1.5 w-1.5 rounded-full bg-[#241a2d]" />
-          <span className="absolute right-4 top-7 h-1.5 w-1.5 rounded-full bg-[#241a2d]" />
-          <span className="absolute bottom-3 left-1/2 h-1 w-4 -translate-x-1/2 rounded-full bg-black/20" />
-        </div>
-        <div
-          className="absolute left-1/2 top-[5.2rem] z-20 h-[5.8rem] w-[4.7rem] -translate-x-1/2 rounded-[2rem_2rem_1.3rem_1.3rem] border-2 border-white/15"
-          style={{ backgroundColor: appearance.shirtColor, transform: `translateX(-50%) scaleX(${width})` }}
+        <spotLight position={[-2.5, 2.8, 2]} intensity={10} angle={0.55} penumbra={0.8} color="#8b5cf6" />
+        <mesh position={[0, -1.08, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <circleGeometry args={[1.45, 40]} />
+          <meshStandardMaterial color="#17132d" roughness={0.76} />
+        </mesh>
+        <ProceduralCharacter
+          appearance={appearance}
+          state="IDLE"
+          personality="CALM"
+          position={[0, -1.02, 0]}
+          rotationY={0}
+          scale={0.98}
+          phase={0.4}
         />
-        <div className="absolute left-0 top-[5.7rem] h-[5.2rem] w-5 rotate-6 rounded-full" style={{ backgroundColor: appearance.shirtColor }} />
-        <div className="absolute right-0 top-[5.7rem] h-[5.2rem] w-5 -rotate-6 rounded-full" style={{ backgroundColor: appearance.shirtColor }} />
-        <div className="absolute left-[1.25rem] top-[10.2rem] h-[4.6rem] w-7 rounded-b-full" style={{ backgroundColor: appearance.pantsColor }} />
-        <div className="absolute right-[1.25rem] top-[10.2rem] h-[4.6rem] w-7 rounded-b-full" style={{ backgroundColor: appearance.pantsColor }} />
+      </Canvas>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 pb-3 pt-10 text-center">
+        <p className="text-2xs font-black uppercase tracking-[0.18em] text-white/75">
+          Anteprima 3D in gioco
+        </p>
       </div>
-      <p className="absolute inset-x-0 bottom-3 text-center text-2xs font-black uppercase tracking-[0.18em] text-white/70">
-        Anteprima personaggio
-      </p>
     </div>
   );
 }
