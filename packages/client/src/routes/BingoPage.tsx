@@ -1,82 +1,595 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  BINGO_FREE_INDEX,
-  bingoLetter,
   normaliseBingoRoomCode,
+  type BingoActionRejectedPayload,
   type BingoClaimRejectedPayload,
-  type BingoPlayerSummary,
+  type BingoMarkingMode,
+  type BingoRoomTier,
   type BingoSnapshotPayload,
+  type BingoStartMode,
   type BingoWinnerPayload,
+  type RoomBingoConfig,
 } from '@bingo/shared';
-import { Button, ResponsiblePlayNotice } from '../components/ui';
+import { ResponsiblePlayNotice } from '../components/ui';
 import {
+  cancelBingoStart,
   claimBingo,
   connectToBingo,
   leaveBingo,
+  markBingoCell,
+  purchaseBingoCards,
+  setBingoReady,
+  startBingoGame,
+  updateBingoConfig,
   type BingoConnectionStatus,
 } from '../net/bingoConnection';
 import { useAuthStore } from '../store/auth';
 
-const COLUMNS = ['B', 'I', 'N', 'G', 'O'] as const;
-
-const REJECTION_COPY: Record<BingoClaimRejectedPayload['reason'], string> = {
-  round_changed: 'Il round è già cambiato: usa la nuova cartella.',
-  incomplete_line: 'Non c’è ancora una cinquina completa sulla cartella.',
-  round_locked: 'Il round è già stato vinto. Il prossimo inizia tra poco.',
+const EMPTY_CONFIG: RoomBingoConfig = {
+  minPlayers: 2,
+  maxPlayers: 20,
+  startMode: 'ALL_READY',
+  countdownSeconds: 10,
+  cardPrice: 10,
+  maxManualCards: 3,
+  maxAutomaticCards: 6,
+  numberCallInterval: 5_000,
+  enabledEvents: [],
+  npcCount: 1,
+  tier: 'STANDARD',
+  chaosLevel: 'LIGHT',
 };
 
-function Ball({ value, size = 'md' }: { value: number; size?: 'sm' | 'md' | 'lg' }) {
-  const dimensions = {
-    sm: 'h-10 w-10 text-xs',
-    md: 'h-14 w-14 text-base',
-    lg: 'h-32 w-32 text-4xl',
-  }[size];
+const PHASE_LABEL: Record<BingoSnapshotPayload['phase'], string> = {
+  WAITING: 'Ingresso',
+  CARD_PURCHASE: 'Preparazione',
+  COUNTDOWN: 'Partenza',
+  PLAYING: 'Partita in corso',
+  EVENT_ACTIVE: 'Evento attivo',
+  RESULTS: 'Risultati',
+  ENDED: 'Fine round',
+};
 
+const CLAIM_REJECTION: Record<BingoClaimRejectedPayload['reason'], string> = {
+  round_changed: 'Il round è cambiato: controlla le nuove cartelle.',
+  wrong_phase: 'La dichiarazione non è disponibile in questa fase.',
+  invalid_card: 'La cartella scelta non è valida.',
+  incomplete_result: 'Il server ha controllato la cartella: il risultato non è ancora completo.',
+  already_awarded: 'Questo premio è già stato assegnato nel round.',
+};
+
+const ACTION_REJECTION: Record<BingoActionRejectedPayload['reason'], string> = {
+  invalid_payload: 'Richiesta non valida. Controlla quantità e impostazioni.',
+  wrong_phase: 'Questa azione non è disponibile nella fase corrente.',
+  host_only: 'Solo l’host può modificare questa impostazione.',
+  minimum_players: 'Non è stato raggiunto il numero minimo di partecipanti.',
+  players_not_ready: 'Alcuni giocatori non sono ancora pronti.',
+  cards_required: 'Ogni giocatore deve acquistare almeno una cartella.',
+  already_purchased: 'Hai già acquistato le cartelle per questo round.',
+  purchase_in_progress: 'Acquisto già in elaborazione.',
+  insufficient_credits: 'Crediti virtuali insufficienti per questo pacchetto.',
+  manual_marking_only: 'La segnatura è automatica in questa partita.',
+  invalid_cell: 'Questa casella non può essere segnata.',
+  not_called: 'Il numero non è ancora stato estratto.',
+  configuration_locked: 'Le impostazioni sono bloccate durante la partita.',
+};
+
+const ROOM_COPY: Record<BingoRoomTier, { title: string; subtitle: string; accent: string }> = {
+  ECONOMY: {
+    title: 'Sala Sprint',
+    subtitle: 'Ritmo rapido, costo ridotto',
+    accent: 'from-emerald-400 to-cyan-500',
+  },
+  STANDARD: {
+    title: 'Sala Classica',
+    subtitle: 'L’esperienza italiana principale',
+    accent: 'from-violet-400 to-indigo-600',
+  },
+  PREMIUM: {
+    title: 'Sala Gran Galà',
+    subtitle: 'Atmosfera elegante, premi virtuali maggiori',
+    accent: 'from-amber-300 to-orange-500',
+  },
+};
+
+function Panel({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div
-      className={`grid ${dimensions} shrink-0 place-items-center rounded-full border-4 border-white/55 bg-[radial-gradient(circle_at_32%_24%,#fff_0_7%,#fff3cc_8%,#ffc655_48%,#d98200_100%)] font-display font-black text-[#2d1a00] shadow-[inset_-10px_-12px_20px_rgb(116_60_0_/_0.3),inset_8px_8px_16px_rgb(255_255_255_/_0.65),0_16px_45px_-14px_rgb(255_176_32_/_0.9)]`}
-      aria-label={`${bingoLetter(value)} ${value}`}
+    <section
+      className={`rounded-[1.6rem] border border-white/10 bg-[#15132b]/86 shadow-[0_24px_80px_-32px_rgb(0_0_0_/_0.9)] backdrop-blur-xl ${className}`}
     >
-      <span>{bingoLetter(value)}{value}</span>
+      {children}
+    </section>
+  );
+}
+
+function StatusPill({
+  status,
+  phase,
+}: {
+  status: BingoConnectionStatus;
+  phase?: BingoSnapshotPayload['phase'];
+}) {
+  const connected = status === 'connected';
+  return (
+    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em]">
+      <span className={`h-2 w-2 rounded-full ${connected ? 'bg-emerald-400 shadow-[0_0_14px_#34d399]' : 'bg-amber-400'}`} />
+      {connected ? PHASE_LABEL[phase ?? 'WAITING'] : status === 'failed' ? 'Rete assente' : 'Connessione'}
     </div>
   );
 }
 
-function PlayerList({ players }: { players: BingoPlayerSummary[] }) {
+function NumberBall({ number, large = false }: { number: number; large?: boolean }) {
   return (
-    <aside className="rounded-2xl border border-brand-300/20 bg-surface-900/72 p-4 shadow-panel backdrop-blur-xl">
-      <div className="mb-4 flex items-center justify-between">
+    <div
+      className={`relative grid shrink-0 place-items-center rounded-full border-[5px] border-white/70 bg-[radial-gradient(circle_at_30%_22%,#fff_0_8%,#fff1b7_9%,#ffbe3d_42%,#e86616_78%,#8d2508_100%)] font-display font-black text-[#341300] shadow-[inset_-16px_-18px_24px_rgb(76_17_0_/_0.35),inset_10px_10px_18px_rgb(255_255_255_/_0.7),0_22px_65px_-20px_rgb(255_131_28_/_0.95)] ${large ? 'h-40 w-40 text-6xl sm:h-48 sm:w-48 sm:text-7xl' : 'h-12 w-12 text-base'}`}
+      aria-label={`Numero ${number}`}
+    >
+      <span>{number}</span>
+      {large && <span className="absolute bottom-6 text-[9px] uppercase tracking-[0.24em] opacity-60">Bingo 90</span>}
+    </div>
+  );
+}
+
+function PlayersPanel({ snapshot }: { snapshot: BingoSnapshotPayload }) {
+  return (
+    <Panel className="p-4">
+      <div className="mb-4 flex items-end justify-between">
         <div>
-          <p className="text-2xs font-black uppercase tracking-[0.18em] text-brand-300">Tavolo live</p>
-          <h2 className="font-display text-lg font-black">Amici in sala</h2>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-violet-300">Tavolo condiviso</p>
+          <h2 className="mt-1 font-display text-xl font-black">Partecipanti</h2>
         </div>
-        <span className="rounded-full border border-success-500/45 bg-success-500/10 px-2.5 py-1 text-xs font-black text-success-400">
-          {players.length}/20
+        <span className="rounded-full bg-white/7 px-3 py-1 text-xs font-black">
+          {snapshot.players.length}/{snapshot.config.maxPlayers}
         </span>
       </div>
       <div className="grid gap-2">
-        {players.map((player, index) => (
-          <div key={player.sessionId} className="flex items-center gap-3 rounded-xl border border-surface-600/65 bg-surface-950/30 p-2.5">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-700 font-black text-white shadow-glow-brand">
-              {player.displayName.slice(0, 1).toUpperCase()}
+        {snapshot.players.map((player) => (
+          <div
+            key={player.sessionId}
+            className="flex items-center gap-3 rounded-2xl border border-white/7 bg-black/18 p-2.5"
+          >
+            <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl font-black text-white ${player.isNpc ? 'bg-gradient-to-br from-amber-400 to-orange-600' : 'bg-gradient-to-br from-violet-400 to-indigo-700'}`}>
+              {player.isNpc ? 'AI' : player.displayName.slice(0, 1).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-black text-content-primary">{player.displayName}</p>
-              <p className="text-2xs text-content-muted">Livello {player.level}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="truncate text-sm font-black">{player.displayName}</p>
+                {player.isHost && <span title="Host">♛</span>}
+              </div>
+              <p className="text-[10px] text-white/50">
+                {player.isNpc ? 'NPC della sala' : `Lv. ${player.level}`} · {player.cardCount} cartell{player.cardCount === 1 ? 'a' : 'e'}
+              </p>
             </div>
-            <span className="text-2xs font-bold uppercase tracking-wider text-success-400">
-              {index === 0 ? 'Host' : 'Online'}
-            </span>
+            <div className="text-right">
+              <p className={`text-[9px] font-black uppercase tracking-wider ${player.loading ? 'text-amber-300' : player.ready ? 'text-emerald-300' : 'text-white/45'}`}>
+                {player.loading ? 'Carica…' : player.ready ? 'Pronto' : 'In attesa'}
+              </p>
+              <p className="mt-0.5 text-[9px] text-white/35">
+                {player.markingMode === 'AUTOMATIC' ? 'Auto' : 'Manuale'}
+              </p>
+            </div>
           </div>
         ))}
-        {players.length === 0 && (
-          <p className="rounded-xl border border-dashed border-surface-500 p-4 text-center text-xs text-content-muted">
-            Connessione dei giocatori…
+      </div>
+    </Panel>
+  );
+}
+
+function HostSettings({
+  config,
+  onChange,
+}: {
+  config: RoomBingoConfig;
+  onChange: (config: RoomBingoConfig) => void;
+}) {
+  const update = <K extends keyof RoomBingoConfig>(key: K, value: RoomBingoConfig[K]) => {
+    const next = { ...config, [key]: value };
+    onChange(next);
+  };
+
+  return (
+    <Panel className="p-5">
+      <div className="mb-4">
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Regia host</p>
+        <h2 className="mt-1 font-display text-xl font-black">Impostazioni partita</h2>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="grid gap-1.5 text-xs font-bold text-white/65">
+          Sistema di partenza
+          <select
+            value={config.startMode}
+            onChange={(event) => update('startMode', event.target.value as BingoStartMode)}
+            className="rounded-xl border border-white/10 bg-[#0c0b1c] px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-violet-400"
+          >
+            <option value="HOST">Manuale dall’host</option>
+            <option value="ALL_READY">Quando tutti sono pronti</option>
+            <option value="TIMER">Timer programmato</option>
+          </select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-bold text-white/65">
+          Sala
+          <select
+            value={config.tier}
+            onChange={(event) => update('tier', event.target.value as BingoRoomTier)}
+            className="rounded-xl border border-white/10 bg-[#0c0b1c] px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-violet-400"
+          >
+            <option value="ECONOMY">Economica</option>
+            <option value="STANDARD">Standard</option>
+            <option value="PREMIUM">Premium virtuale</option>
+          </select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-bold text-white/65">
+          Conto alla rovescia
+          <select
+            value={config.countdownSeconds}
+            onChange={(event) => update('countdownSeconds', Number(event.target.value))}
+            className="rounded-xl border border-white/10 bg-[#0c0b1c] px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-violet-400"
+          >
+            <option value={5}>5 secondi (demo)</option>
+            <option value={30}>30 secondi</option>
+            <option value={60}>60 secondi</option>
+            <option value={90}>90 secondi</option>
+          </select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-bold text-white/65">
+          Livello di caos
+          <select
+            value={config.chaosLevel}
+            onChange={(event) => update('chaosLevel', event.target.value as RoomBingoConfig['chaosLevel'])}
+            className="rounded-xl border border-white/10 bg-[#0c0b1c] px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-violet-400"
+          >
+            <option value="CLASSIC">Classico</option>
+            <option value="LIGHT">Leggero</option>
+            <option value="CHAOTIC">Caotico</option>
+            <option value="ABSURD">Assurdo</option>
+          </select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-bold text-white/65">
+          NPC ai posti liberi: {config.npcCount}
+          <input
+            type="range"
+            min={0}
+            max={6}
+            value={config.npcCount}
+            onChange={(event) => update('npcCount', Number(event.target.value))}
+            className="accent-violet-400"
+          />
+        </label>
+        <label className="grid gap-1.5 text-xs font-bold text-white/65">
+          Ritmo chiamata: {(config.numberCallInterval / 1_000).toFixed(1)} s
+          <input
+            type="range"
+            min={2_500}
+            max={12_000}
+            step={500}
+            value={config.numberCallInterval}
+            onChange={(event) => update('numberCallInterval', Number(event.target.value))}
+            className="accent-amber-400"
+          />
+        </label>
+      </div>
+    </Panel>
+  );
+}
+
+function PurchasePanel({
+  snapshot,
+  quantity,
+  mode,
+  onQuantity,
+  onMode,
+}: {
+  snapshot: BingoSnapshotPayload;
+  quantity: number;
+  mode: BingoMarkingMode;
+  onQuantity: (quantity: number) => void;
+  onMode: (mode: BingoMarkingMode) => void;
+}) {
+  const me = snapshot.players.find((player) => player.sessionId === snapshot.mySessionId);
+  const limit =
+    mode === 'MANUAL' ? snapshot.config.maxManualCards : snapshot.config.maxAutomaticCards;
+  const total = quantity * snapshot.config.cardPrice;
+  const alreadyBought = (me?.cardCount ?? 0) > 0;
+
+  return (
+    <Panel className="overflow-hidden">
+      <div className={`bg-gradient-to-r ${ROOM_COPY[snapshot.config.tier].accent} px-5 py-4 text-[#150e25]`}>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em]">Acquisto con soli crediti virtuali</p>
+        <div className="mt-1 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="font-display text-2xl font-black">{ROOM_COPY[snapshot.config.tier].title}</h2>
+            <p className="text-xs font-bold opacity-70">{ROOM_COPY[snapshot.config.tier].subtitle}</p>
+          </div>
+          <p className="text-lg font-black">{snapshot.config.cardPrice} crediti / cartella</p>
+        </div>
+      </div>
+      <div className="grid gap-5 p-5 lg:grid-cols-[1fr_17rem]">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/55">1. Modalità di segnatura</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {(['MANUAL', 'AUTOMATIC'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                disabled={alreadyBought}
+                onClick={() => {
+                  onMode(option);
+                  onQuantity(Math.min(quantity, option === 'MANUAL' ? snapshot.config.maxManualCards : snapshot.config.maxAutomaticCards));
+                }}
+                className={`rounded-2xl border p-4 text-left transition ${mode === option ? 'border-violet-300 bg-violet-400/15 shadow-[0_0_30px_-14px_#a78bfa]' : 'border-white/8 bg-white/3 hover:bg-white/6'} disabled:opacity-60`}
+              >
+                <p className="font-display text-lg font-black">{option === 'MANUAL' ? '✎ Manuale' : '✦ Automatica'}</p>
+                <p className="mt-1 text-xs leading-relaxed text-white/55">
+                  {option === 'MANUAL'
+                    ? 'Sei tu a segnare: puoi anche commettere e correggere errori.'
+                    : 'Il server evidenzia soltanto i numeri realmente estratti.'}
+                </p>
+              </button>
+            ))}
+          </div>
+
+          <p className="mt-5 text-xs font-black uppercase tracking-[0.16em] text-white/55">2. Scegli il pacchetto</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {[1, 3, 6].map((count) => (
+              <button
+                key={count}
+                type="button"
+                disabled={alreadyBought || count > limit}
+                onClick={() => onQuantity(count)}
+                className={`min-w-20 rounded-xl border px-4 py-3 font-display text-lg font-black transition ${quantity === count ? 'border-amber-300 bg-amber-300 text-[#241406]' : 'border-white/10 bg-white/4 hover:bg-white/8'} disabled:cursor-not-allowed disabled:opacity-25`}
+              >
+                × {count}
+              </button>
+            ))}
+            <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 text-xs font-bold text-white/55">
+              Altro
+              <input
+                type="number"
+                min={1}
+                max={limit}
+                disabled={alreadyBought}
+                value={quantity}
+                onChange={(event) => onQuantity(Math.max(1, Math.min(limit, Number(event.target.value) || 1)))}
+                className="w-12 bg-transparent py-3 text-center text-base font-black text-white outline-none"
+              />
+            </label>
+          </div>
+          <p className="mt-2 text-[11px] text-white/45">
+            Limite {mode === 'MANUAL' ? 'manuale' : 'automatico'}: {limit} cartelle.
           </p>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-black/22 p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-300">Riepilogo</p>
+          <dl className="mt-3 grid gap-2 text-sm">
+            <div className="flex justify-between"><dt className="text-white/55">Quantità</dt><dd className="font-black">{quantity}</dd></div>
+            <div className="flex justify-between"><dt className="text-white/55">Costo unitario</dt><dd className="font-black">{snapshot.config.cardPrice}</dd></div>
+            <div className="flex justify-between border-t border-white/8 pt-2"><dt className="text-white/75">Totale</dt><dd className="font-display text-xl font-black text-amber-300">{total} cr</dd></div>
+            <div className="flex justify-between"><dt className="text-white/55">Saldo dopo</dt><dd className={`font-black ${(me?.balance ?? 0) - total < 0 ? 'text-red-300' : 'text-emerald-300'}`}>{(me?.balance ?? 0) - total} cr</dd></div>
+          </dl>
+          <button
+            type="button"
+            disabled={alreadyBought || total > (me?.balance ?? 0)}
+            onClick={() => purchaseBingoCards(quantity, mode)}
+            className="mt-4 w-full rounded-xl bg-gradient-to-r from-amber-300 to-orange-500 px-4 py-3 font-display text-base font-black text-[#241406] shadow-[0_14px_35px_-18px_#fb923c] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {alreadyBought ? '✓ Cartelle acquistate' : 'Conferma acquisto'}
+          </button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function Countdown({ snapshot, now }: { snapshot: BingoSnapshotPayload; now: number }) {
+  const seconds = Math.max(0, Math.ceil(((snapshot.countdownEndsAt ?? now) - now) / 1_000));
+  return (
+    <Panel className="relative overflow-hidden p-8 text-center">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgb(124_58_237_/_0.28),transparent_58%)]" />
+      <div className="relative">
+        <p className="text-xs font-black uppercase tracking-[0.28em] text-violet-300">Tutti ai propri posti</p>
+        <div className="mx-auto mt-5 grid h-48 w-48 place-items-center rounded-full border-8 border-violet-300/25 bg-black/25 font-display text-8xl font-black text-white shadow-[0_0_80px_-20px_#8b5cf6]">
+          {seconds}
+        </div>
+        <h2 className="mt-5 font-display text-3xl font-black">La partita sta per iniziare</h2>
+        <p className="mt-2 text-sm text-white/55">Cartelle bloccate · Seed server verificato · Sincronizzazione attiva</p>
+        {snapshot.mySessionId === snapshot.hostSessionId && (
+          <button
+            type="button"
+            onClick={cancelBingoStart}
+            className="mt-5 rounded-xl border border-red-300/35 bg-red-400/10 px-5 py-2.5 text-sm font-black text-red-200 hover:bg-red-400/20"
+          >
+            Annulla conto alla rovescia
+          </button>
         )}
       </div>
-    </aside>
+    </Panel>
+  );
+}
+
+function GameTable({
+  snapshot,
+  selectedCard,
+  onSelectedCard,
+  markerColor,
+  onMarkerColor,
+  now,
+}: {
+  snapshot: BingoSnapshotPayload;
+  selectedCard: number;
+  onSelectedCard: (index: number) => void;
+  markerColor: string;
+  onMarkerColor: (color: string) => void;
+  now: number;
+}) {
+  const card = snapshot.myCards[selectedCard] ?? snapshot.myCards[0];
+  const drawn = useMemo(() => new Set(snapshot.drawnNumbers), [snapshot.drawnNumbers]);
+  const seconds = Math.max(0, Math.ceil(((snapshot.nextDrawAt ?? now) - now) / 1_000));
+  const me = snapshot.players.find((player) => player.sessionId === snapshot.mySessionId);
+  const marked = new Set(card?.markedIndices ?? []);
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <Panel className="overflow-hidden">
+        <div className="grid gap-5 border-b border-white/8 bg-black/18 p-5 md:grid-cols-[13rem_1fr]">
+          <div className="grid min-h-56 place-items-center rounded-[1.8rem] border border-amber-300/18 bg-[radial-gradient(circle_at_center,#3c235c,#100d23_72%)] p-4">
+            {snapshot.currentNumber ? (
+              <div className="grid place-items-center gap-3" aria-live="assertive">
+                <NumberBall number={snapshot.currentNumber} large />
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-200">Numero estratto</p>
+              </div>
+            ) : (
+              <p className="font-display text-2xl font-black text-white/45">Prima estrazione…</p>
+            )}
+          </div>
+          <div className="flex min-w-0 flex-col justify-between gap-5">
+            <div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300">Regia server · Round {snapshot.round}</p>
+                  <h2 className="mt-1 font-display text-2xl font-black">
+                    Prossimo numero tra {seconds === 0 ? '<1' : seconds} s
+                  </h2>
+                  <p className="mt-1 text-xs text-white/50">
+                    {me?.markingMode === 'MANUAL'
+                      ? 'Scegli un pennarello e premi le caselle. Gli errori restano visibili e possono essere cancellati.'
+                      : 'Segnatura automatica attiva: vengono marcati solo i numeri verificati.'}
+                  </p>
+                </div>
+                <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-300">
+                  ● Sincronizzato
+                </span>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/7">
+                <div className="h-full bg-gradient-to-r from-violet-500 via-cyan-400 to-amber-300 transition-all" style={{ width: `${(snapshot.drawnNumbers.length / 90) * 100}%` }} />
+              </div>
+              <div className="mt-2 flex justify-between text-[10px] text-white/40">
+                <span>{snapshot.drawnNumbers.length} estratti</span><span>90 totali</span>
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-white/40">Ultimi numeri</p>
+              <div className="flex min-h-12 flex-wrap gap-2">
+                {snapshot.drawnNumbers.slice(-5).reverse().map((number) => <NumberBall key={number} number={number} />)}
+                {snapshot.drawnNumbers.length === 0 && <p className="self-center text-xs text-white/35">Lo storico apparirà qui.</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[linear-gradient(135deg,rgb(83_50_33_/_0.55),rgb(30_19_32_/_0.9))] p-4 sm:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {snapshot.myCards.map((entry, index) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => onSelectedCard(index)}
+                  className={`rounded-xl border px-4 py-2 text-xs font-black transition ${selectedCard === index ? 'border-amber-200 bg-amber-300 text-[#2b1805]' : 'border-white/10 bg-black/25 hover:bg-white/8'}`}
+                >
+                  Cartella {index + 1}
+                </button>
+              ))}
+            </div>
+            {me?.markingMode === 'MANUAL' && (
+              <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-black/20 px-3 py-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-white/45">Pennarello</span>
+                {['#ef4444', '#2563eb', '#16a34a', '#7c3aed'].map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => onMarkerColor(color)}
+                    aria-label={`Pennarello ${color}`}
+                    className={`h-6 w-6 rounded-full border-2 transition ${markerColor === color ? 'scale-110 border-white' : 'border-white/20'}`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {card ? (
+            <div className="mx-auto max-w-[860px] rounded-xl border-[6px] border-[#ece1c5] bg-[#f8f0da] p-2 shadow-[0_24px_50px_-24px_#000] sm:p-3">
+              <div className="mb-2 grid grid-cols-9 gap-1">
+                {['1–9', '10', '20', '30', '40', '50', '60', '70', '80–90'].map((label) => (
+                  <div key={label} className="py-1 text-center text-[8px] font-black uppercase text-[#6b5434] sm:text-[10px]">{label}</div>
+                ))}
+              </div>
+              <div className="grid grid-cols-9 gap-1" aria-label={`Cartella italiana ${selectedCard + 1}`}>
+                {card.cells.map((number, cellIndex) => {
+                  const isMarked = marked.has(cellIndex);
+                  const isDrawn = number !== null && drawn.has(number);
+                  const wrong = isMarked && !isDrawn;
+                  return number === null ? (
+                    <div key={cellIndex} className="aspect-[1.12] rounded-md bg-[#d7c8aa]/55" aria-hidden="true" />
+                  ) : (
+                    <button
+                      key={cellIndex}
+                      type="button"
+                      disabled={me?.markingMode !== 'MANUAL'}
+                      onClick={() => markBingoCell(snapshot.round, selectedCard, cellIndex, !isMarked)}
+                      className={`relative aspect-[1.12] overflow-hidden rounded-md border-2 font-display text-base font-black text-[#2b2115] transition sm:text-2xl ${isDrawn ? 'border-amber-500 bg-[#fff7dd]' : 'border-[#b9a986] bg-[#fffaf0]'} ${me?.markingMode === 'MANUAL' ? 'hover:-translate-y-0.5 hover:shadow-md' : 'cursor-default'}`}
+                    >
+                      {number}
+                      {isMarked && (
+                        <span
+                          className={`absolute inset-[12%] rounded-full border-[5px] opacity-75 ${wrong ? 'border-dashed' : ''}`}
+                          style={{ borderColor: wrong ? '#ef4444' : markerColor, transform: `rotate(${(cellIndex % 5) - 2}deg)` }}
+                        />
+                      )}
+                      {wrong && <span className="absolute right-0.5 top-0 text-[8px] font-black text-red-600">!</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="grid min-h-52 place-items-center rounded-2xl border border-dashed border-white/15 text-sm text-white/45">Nessuna cartella assegnata.</div>
+          )}
+          <div className="mx-auto mt-3 flex max-w-[860px] items-center justify-between text-[10px] text-white/40">
+            <span>Seed pubblico: {snapshot.seedHash}</span>
+            <span>{me?.markingMode === 'AUTOMATIC' ? '✦ Modalità automatica' : '✎ Modalità manuale'}</span>
+          </div>
+        </div>
+      </Panel>
+
+      <div className="grid content-start gap-3">
+        <Panel className="p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">Dichiarazioni</p>
+          <button
+            type="button"
+            disabled={snapshot.awardedTiers.includes('CINQUINA')}
+            onClick={() => claimBingo(snapshot.round, 'CINQUINA', selectedCard)}
+            className="mt-3 w-full rounded-xl border border-cyan-300/25 bg-cyan-400/12 px-4 py-4 font-display text-xl font-black text-cyan-100 transition hover:bg-cyan-400/20 disabled:opacity-35"
+          >
+            CINQUINA
+          </button>
+          <button
+            type="button"
+            disabled={snapshot.awardedTiers.includes('BINGO')}
+            onClick={() => claimBingo(snapshot.round, 'BINGO', selectedCard)}
+            className="mt-2 w-full rounded-xl bg-gradient-to-r from-amber-300 to-orange-500 px-4 py-5 font-display text-2xl font-black text-[#281502] shadow-[0_18px_45px_-20px_#fb923c] transition hover:-translate-y-0.5 disabled:opacity-35"
+          >
+            ★ BINGO
+          </button>
+          <p className="mt-3 text-[11px] leading-relaxed text-white/45">
+            Il server verifica i numeri estratti sulla cartella originale. Le caselle segnate nel browser non possono falsificare la vincita.
+          </p>
+        </Panel>
+        <Panel className="p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-300">Montepremi virtuale</p>
+          <p className="mt-1 font-display text-3xl font-black text-amber-300">{snapshot.potCredits} cr</p>
+          <p className="mt-1 text-[10px] text-white/40">Nessun valore monetario reale o convertibile.</p>
+        </Panel>
+      </div>
+    </div>
   );
 }
 
@@ -84,28 +597,25 @@ export default function BingoPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const accessToken = useAuthStore((state) => state.accessToken);
-  const user = useAuthStore((state) => state.user);
-
   const roomCode = useMemo(
     () => normaliseBingoRoomCode(searchParams.get('room') ?? 'TESI-2026'),
     [searchParams],
   );
 
   const [status, setStatus] = useState<BingoConnectionStatus>('connecting');
-  const [round, setRound] = useState(1);
-  const [card, setCard] = useState<number[]>([]);
-  const [calledBalls, setCalledBalls] = useState<number[]>([]);
-  const [currentBall, setCurrentBall] = useState<number | null>(null);
-  const [players, setPlayers] = useState<BingoPlayerSummary[]>([]);
-  const [marked, setMarked] = useState<Set<number>>(new Set([BINGO_FREE_INDEX]));
-  const [nextDrawAt, setNextDrawAt] = useState(0);
-  const [now, setNow] = useState(Date.now());
-  const [notice, setNotice] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<BingoSnapshotPayload | null>(null);
   const [winner, setWinner] = useState<BingoWinnerPayload | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [quantity, setQuantity] = useState(1);
+  const [mode, setMode] = useState<BingoMarkingMode>('MANUAL');
+  const [selectedCard, setSelectedCard] = useState(0);
+  const [markerColor, setMarkerColor] = useState('#2563eb');
+  const [hostConfig, setHostConfig] = useState<RoomBingoConfig>(EMPTY_CONFIG);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    const timer = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -113,46 +623,39 @@ export default function BingoPage() {
     if (!accessToken) return;
     let active = true;
 
-    const applySnapshot = (snapshot: BingoSnapshotPayload) => {
-      if (!active) return;
-      setRound(snapshot.round);
-      setCard(snapshot.card);
-      setCalledBalls(snapshot.calledBalls);
-      setCurrentBall(snapshot.currentBall);
-      setPlayers(snapshot.players);
-      setNextDrawAt(snapshot.nextDrawAt);
-      setMarked(new Set([BINGO_FREE_INDEX]));
-      setWinner(null);
-      setNotice(null);
-    };
-
     void connectToBingo(accessToken, roomCode, {
-      onStatus: setStatus,
-      onSnapshot: applySnapshot,
+      onStatus: (next) => active && setStatus(next),
+      onSnapshot: (next) => {
+        if (!active) return;
+        setSnapshot(next);
+        setHostConfig(next.config);
+        setSelectedCard((current) => Math.min(current, Math.max(0, next.myCards.length - 1)));
+        if (next.phase === 'CARD_PURCHASE') setWinner(null);
+      },
       onBall: (payload) => {
         if (!active) return;
-        setRound(payload.round);
-        setCurrentBall(payload.ball);
-        setCalledBalls(payload.calledBalls);
-        setNextDrawAt(payload.nextDrawAt);
+        setNotice(null);
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(`Numero ${payload.number}`);
+          utterance.lang = 'it-IT';
+          utterance.rate = 0.9;
+          utterance.volume = 0.85;
+          window.speechSynthesis.speak(utterance);
+        }
       },
-      onPlayers: (nextPlayers) => active && setPlayers(nextPlayers),
       onWinner: (payload) => {
         if (!active) return;
         setWinner(payload);
         setNotice(null);
       },
-      onClaimRejected: (payload) => {
-        if (active) setNotice(REJECTION_COPY[payload.reason]);
-      },
-      onRoundReset: (payload) => {
-        if (!active) return;
-        setRound(payload.round);
-        setNextDrawAt(payload.startsAt);
-        setNotice('Nuovo round in preparazione…');
-      },
+      onClaimRejected: (payload) => active && setNotice(CLAIM_REJECTION[payload.reason]),
+      onActionRejected: (payload) => active && setNotice(ACTION_REJECTION[payload.reason]),
     }).catch(() => {
-      if (active) setStatus('failed');
+      if (active) {
+        setStatus('failed');
+        setNotice('Impossibile entrare nella sala. Riprova tra qualche secondo.');
+      }
     });
 
     return () => {
@@ -161,214 +664,159 @@ export default function BingoPage() {
     };
   }, [accessToken, roomCode]);
 
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(null), 4_000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
+  const me = snapshot?.players.find((player) => player.sessionId === snapshot.mySessionId);
+  const isHost = snapshot?.mySessionId === snapshot?.hostSessionId;
 
-  const called = useMemo(() => new Set(calledBalls), [calledBalls]);
-  const countdown = Math.max(0, Math.ceil((nextDrawAt - now) / 1000));
-  const progress = Math.min(100, (calledBalls.length / 75) * 100);
-
-  const toggleMark = (index: number) => {
-    if (index === BINGO_FREE_INDEX || !called.has(card[index]!)) return;
-    setMarked((current) => {
-      const next = new Set(current);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
+  const saveHostConfig = (next: RoomBingoConfig) => {
+    setHostConfig(next);
+    updateBingoConfig({
+      startMode: next.startMode,
+      countdownSeconds: next.countdownSeconds,
+      numberCallInterval: next.numberCallInterval,
+      npcCount: next.npcCount,
+      tier: next.tier,
+      chaosLevel: next.chaosLevel,
     });
   };
 
-  const copyInvite = async () => {
-    const url = new URL('/bingo', window.location.origin);
-    url.searchParams.set('room', roomCode);
-    await navigator.clipboard.writeText(url.toString());
+  const invite = async () => {
+    await navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1_800);
   };
 
-  const createNewRoom = () => {
+  const newRoom = () => {
     const code = `TESI-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
     navigate(`/bingo?room=${code}`);
   };
 
   return (
-    <main className="relative min-h-full overflow-x-hidden bg-[radial-gradient(circle_at_50%_-10%,rgb(124_92_255_/_0.34),transparent_42rem),radial-gradient(circle_at_100%_80%,rgb(62_201_224_/_0.16),transparent_34rem),linear-gradient(145deg,#070611,#100b2a)] text-content-primary">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgb(255_255_255_/_0.025)_1px,transparent_1px),linear-gradient(90deg,rgb(255_255_255_/_0.025)_1px,transparent_1px)] bg-[size:48px_48px]" />
+    <main className="min-h-screen overflow-x-hidden bg-[#080713] text-white">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_10%_0%,rgb(124_58_237_/_0.24),transparent_35%),radial-gradient(circle_at_90%_20%,rgb(245_158_11_/_0.13),transparent_28%),linear-gradient(#080713,#0d0b1d)]" />
 
-      <header className="relative z-10 border-b border-brand-300/15 bg-surface-950/55 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-7">
+      <header className="relative z-10 border-b border-white/8 bg-black/22 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1540px] flex-wrap items-center justify-between gap-3 px-4 py-4 lg:px-7">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/hub')}>
-              ← Piazza
-            </Button>
+            <button type="button" onClick={() => navigate('/hub')} className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/5 font-black hover:bg-white/10" aria-label="Torna alla piazza">←</button>
             <div>
-              <p className="text-2xs font-black uppercase tracking-[0.2em] text-accent-300">Sala condivisa</p>
-              <h1 className="font-display text-xl font-black">Bingo Night · Round {round}</h1>
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-violet-300">BingoVerse · Sala multiplayer</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="font-display text-xl font-black sm:text-2xl">{snapshot?.roomName ?? 'Sala Bingo Italiano'}</h1>
+                <span className="rounded-md bg-violet-400/15 px-2 py-1 font-mono text-[10px] font-black text-violet-200">{roomCode}</span>
+              </div>
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="rounded-lg border border-brand-300/25 bg-brand-500/10 px-3 py-1.5">
-              <span className="text-2xs uppercase tracking-wider text-content-muted">Codice </span>
-              <strong className="font-mono text-sm text-brand-100">{roomCode}</strong>
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => void copyInvite()}>
-              {copied ? '✓ Link copiato' : '⇧ Invita amici'}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={createNewRoom}>
-              + Nuova sala
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill status={status} phase={snapshot?.phase} />
+            <button type="button" onClick={invite} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-black hover:bg-white/10">{copied ? '✓ Link copiato' : '⇧ Invita amici'}</button>
+            <button type="button" onClick={newRoom} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-black hover:bg-white/10">+ Nuova sala</button>
           </div>
         </div>
       </header>
 
-      <div className="relative z-10 mx-auto grid max-w-[1500px] gap-5 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_19rem] lg:px-7">
-        <section className="grid gap-5">
-          <div className="grid gap-4 rounded-2xl border border-brand-300/20 bg-surface-900/66 p-5 shadow-panel backdrop-blur-xl md:grid-cols-[15rem_1fr]">
-            <div className="grid place-items-center rounded-2xl border border-accent-400/25 bg-[radial-gradient(circle,#4b337c,#1a1238)] p-5">
-              {currentBall ? (
-                <div className="grid place-items-center gap-3" aria-live="polite">
-                  <Ball value={currentBall} size="lg" />
-                  <p className="text-center text-sm font-black text-accent-300">Numero estratto</p>
-                </div>
-              ) : (
-                <div className="grid h-40 place-items-center text-center">
-                  <p className="font-display text-2xl font-black text-content-secondary">Si parte!</p>
-                </div>
+      <div className="relative z-10 mx-auto max-w-[1540px] px-4 py-5 lg:px-7">
+        {!snapshot ? (
+          <Panel className="grid min-h-[60vh] place-items-center p-8 text-center">
+            <div>
+              <div className="mx-auto h-14 w-14 animate-pulse rounded-full bg-violet-400 shadow-[0_0_45px_#8b5cf6]" />
+              <h2 className="mt-5 font-display text-2xl font-black">Preparazione della sala</h2>
+              <p className="mt-2 text-sm text-white/45">Sincronizzazione con la regia server…</p>
+            </div>
+          </Panel>
+        ) : (
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <div className="grid content-start gap-5">
+              {snapshot.phase === 'CARD_PURCHASE' && (
+                <>
+                  <PurchasePanel snapshot={snapshot} quantity={quantity} mode={mode} onQuantity={setQuantity} onMode={setMode} />
+                  <div className="grid gap-5 xl:grid-cols-[1fr_20rem]">
+                    {isHost ? (
+                      <HostSettings config={hostConfig} onChange={saveHostConfig} />
+                    ) : (
+                      <Panel className="p-5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-violet-300">Configurazione host</p>
+                        <h2 className="mt-1 font-display text-xl font-black">{ROOM_COPY[snapshot.config.tier].title}</h2>
+                        <p className="mt-2 text-sm text-white/50">
+                          Partenza: {snapshot.config.startMode === 'HOST' ? 'manuale' : snapshot.config.startMode === 'ALL_READY' ? 'tutti pronti' : 'programmata'} · Caos: {snapshot.config.chaosLevel.toLowerCase()}.
+                        </p>
+                      </Panel>
+                    )}
+                    <Panel className="p-5">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300">Il tuo stato</p>
+                      <p className="mt-2 text-sm text-white/55">Saldo virtuale</p>
+                      <p className="font-display text-3xl font-black text-amber-300">{me?.balance ?? 0} cr</p>
+                      <button
+                        type="button"
+                        disabled={(me?.cardCount ?? 0) === 0}
+                        onClick={() => setBingoReady(!me?.ready)}
+                        className={`mt-4 w-full rounded-xl px-4 py-3 font-display text-base font-black transition disabled:opacity-35 ${me?.ready ? 'border border-white/10 bg-white/7 text-white' : 'bg-emerald-400 text-[#08251b] shadow-[0_15px_35px_-18px_#34d399]'}`}
+                      >
+                        {me?.ready ? 'Annulla pronto' : '✓ Sono pronto'}
+                      </button>
+                      {isHost && snapshot.config.startMode === 'HOST' && (
+                        <button
+                          type="button"
+                          disabled={(me?.cardCount ?? 0) === 0}
+                          onClick={startBingoGame}
+                          className="mt-2 w-full rounded-xl bg-gradient-to-r from-violet-400 to-indigo-600 px-4 py-3 font-display font-black shadow-[0_15px_35px_-18px_#8b5cf6] disabled:opacity-35"
+                        >
+                          Avvia partita
+                        </button>
+                      )}
+                    </Panel>
+                  </div>
+                </>
+              )}
+
+              {snapshot.phase === 'COUNTDOWN' && <Countdown snapshot={snapshot} now={now} />}
+
+              {(snapshot.phase === 'PLAYING' || snapshot.phase === 'EVENT_ACTIVE') && (
+                <GameTable snapshot={snapshot} selectedCard={selectedCard} onSelectedCard={setSelectedCard} markerColor={markerColor} onMarkerColor={setMarkerColor} now={now} />
+              )}
+
+              {(snapshot.phase === 'RESULTS' || snapshot.phase === 'ENDED') && (
+                <Panel className="relative grid min-h-[60vh] place-items-center overflow-hidden p-8 text-center">
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgb(245_158_11_/_0.24),transparent_55%)]" />
+                  <div className="relative">
+                    <p className="text-xs font-black uppercase tracking-[0.3em] text-amber-300">Risultato verificato dal server</p>
+                    <h2 className="mt-4 font-display text-5xl font-black">{winner ? `${winner.tier}!` : 'Round concluso'}</h2>
+                    {winner && (
+                      <>
+                        <p className="mt-3 text-xl font-black">{winner.displayName}</p>
+                        <p className="mt-2 text-sm text-white/55">Premio virtuale: {winner.prizeCredits} crediti</p>
+                      </>
+                    )}
+                    <p className="mt-5 text-sm text-white/45">La sala prepara automaticamente il round successivo.</p>
+                  </div>
+                </Panel>
               )}
             </div>
-
-            <div className="grid content-between gap-5">
-              <div>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-2xs font-black uppercase tracking-[0.18em] text-info-400">Regia server</p>
-                    <h2 className="font-display text-2xl font-black">
-                      {status === 'connected' ? `Prossima estrazione tra ${countdown === 0 ? '<1' : countdown}s` : 'Connessione alla sala…'}
-                    </h2>
-                    <p className="mt-1 max-w-2xl text-sm leading-relaxed text-content-secondary">
-                      Seleziona i numeri già estratti sulla cartella. Quando completi una riga, una colonna o una diagonale, chiama BINGO.
-                    </p>
-                  </div>
-                  <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-wider ${
-                    status === 'connected'
-                      ? 'border-success-500/50 bg-success-500/10 text-success-400'
-                      : status === 'failed'
-                        ? 'border-danger-500/50 bg-danger-500/10 text-danger-400'
-                        : 'border-warning-500/50 bg-warning-500/10 text-warning-400'
-                  }`}>
-                    ● {status === 'connected' ? 'Live' : status === 'failed' ? 'Errore rete' : 'Connessione'}
-                  </span>
-                </div>
-
-                <div className="mt-5 h-2 overflow-hidden rounded-full bg-surface-950/65">
-                  <div className="h-full rounded-full bg-gradient-to-r from-brand-500 via-info-400 to-accent-400 transition-all" style={{ width: `${progress}%` }} />
-                </div>
-                <div className="mt-2 flex justify-between text-2xs text-content-muted">
-                  <span>{calledBalls.length} estratti</span>
-                  <span>75 totali</span>
-                </div>
-              </div>
-
-              <div className="flex min-h-14 flex-wrap gap-2">
-                {calledBalls.slice(-10).reverse().map((ball) => <Ball key={ball} value={ball} size="sm" />)}
-                {calledBalls.length === 0 && <p className="self-center text-xs text-content-muted">Lo storico apparirà qui.</p>}
-              </div>
-            </div>
+            <PlayersPanel snapshot={snapshot} />
           </div>
-
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_15rem]">
-            <section className="rounded-2xl border border-brand-300/25 bg-gradient-to-br from-surface-800/95 to-surface-900/95 p-4 shadow-panel sm:p-6">
-              <div className="mx-auto max-w-md">
-                <div className="mb-2 grid grid-cols-5 gap-2">
-                  {COLUMNS.map((letter, index) => (
-                    <div key={letter} className={`grid h-12 place-items-center rounded-xl bg-gradient-to-b ${
-                      index === 0 ? 'from-info-400 to-info-600' :
-                      index === 1 ? 'from-brand-400 to-brand-700' :
-                      index === 2 ? 'from-accent-300 to-accent-600 text-content-inverse' :
-                      index === 3 ? 'from-success-400 to-success-600' :
-                      'from-danger-400 to-danger-600'
-                    } font-display text-2xl font-black shadow-raised`}>
-                      {letter}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-5 gap-2" aria-label="Cartella Bingo">
-                  {Array.from({ length: 25 }, (_value, index) => {
-                    const number = card[index];
-                    const free = index === BINGO_FREE_INDEX;
-                    const isCalled = number !== undefined && called.has(number);
-                    const isMarked = marked.has(index);
-                    return (
-                      <button
-                        key={index}
-                        type="button"
-                        disabled={!free && !isCalled}
-                        onClick={() => toggleMark(index)}
-                        aria-pressed={isMarked}
-                        className={`aspect-square min-h-12 rounded-xl border font-display text-lg font-black transition sm:text-2xl ${
-                          isMarked
-                            ? 'scale-[0.96] border-accent-300 bg-gradient-to-br from-accent-300 to-accent-600 text-content-inverse shadow-glow-accent'
-                            : isCalled
-                              ? 'border-brand-300 bg-brand-500/22 text-content-primary hover:scale-105 hover:bg-brand-500/35'
-                              : 'border-surface-500/70 bg-surface-950/42 text-content-secondary'
-                        } disabled:cursor-default`}
-                      >
-                        {free ? <span className="text-xs font-black sm:text-sm">FREE<br />★</span> : number ?? '—'}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </section>
-
-            <div className="grid content-start gap-3">
-              <Button
-                variant="accent"
-                size="lg"
-                disabled={status !== 'connected' || card.length !== 25 || Boolean(winner)}
-                className="min-h-20 w-full text-xl"
-                onClick={() => claimBingo(round)}
-              >
-                ★ CHIAMA BINGO
-              </Button>
-              <div className="rounded-xl border border-surface-600/70 bg-surface-900/55 p-3 text-xs leading-relaxed text-content-muted">
-                La vincita viene controllata dal server sulla cartella assegnata. Nessun risultato dipende dal browser.
-              </div>
-              <div className="rounded-xl border border-info-500/30 bg-info-500/8 p-3">
-                <p className="text-2xs font-black uppercase tracking-wider text-info-400">Giocatore</p>
-                <p className="mt-1 font-black">{user?.displayName}</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <PlayerList players={players} />
+        )}
       </div>
 
-      {(notice || winner) && (
-        <div className="fixed inset-x-0 bottom-6 z-30 flex justify-center px-4" aria-live="assertive">
-          <div className={`max-w-xl rounded-2xl border px-5 py-4 text-center shadow-panel backdrop-blur-xl ${
-            winner
-              ? 'border-accent-300 bg-[#2f1d05]/95 text-accent-100 shadow-glow-accent'
-              : 'border-warning-500/50 bg-surface-900/95 text-warning-400'
-          }`}>
+      {(notice || winner) && snapshot?.phase !== 'RESULTS' && snapshot?.phase !== 'ENDED' && (
+        <div className="fixed inset-x-0 bottom-5 z-40 flex justify-center px-4" aria-live="assertive">
+          <button
+            type="button"
+            onClick={() => {
+              setNotice(null);
+              if (winner?.tier === 'CINQUINA') setWinner(null);
+            }}
+            className={`max-w-xl rounded-2xl border px-5 py-4 text-center shadow-2xl backdrop-blur-xl ${winner ? 'border-amber-200/35 bg-[#3b2409]/95 text-amber-100' : 'border-red-300/25 bg-[#26131b]/95 text-red-100'}`}
+          >
             {winner ? (
               <>
-                <p className="text-2xs font-black uppercase tracking-[0.2em]">Vittoria verificata</p>
-                <p className="mt-1 font-display text-2xl font-black">BINGO di {winner.displayName}!</p>
-                <p className="mt-1 text-xs opacity-80">Nuovo round tra pochi secondi.</p>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Premio convalidato</span>
+                <strong className="mt-1 block font-display text-xl">{winner.tier} di {winner.displayName} · +{winner.prizeCredits} cr</strong>
               </>
             ) : notice}
-          </div>
+          </button>
         </div>
       )}
 
-      <ResponsiblePlayNotice className="relative z-10 mx-auto max-w-4xl px-4 pb-5" />
+      <ResponsiblePlayNotice className="relative z-10 mx-auto max-w-5xl px-4 pb-5" />
     </main>
   );
 }
