@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useHubStore } from '../store/hub';
-import { LABEL_MAX_DISTANCE, chatBubbles, labelAnchors } from '../three/labels';
+import { LABEL_MAX_DISTANCE, chatBubbles, isNameTagVisible, labelAnchors } from '../three/labels';
 
 /**
  * Name tags and chat bubbles, as DOM over the canvas.
@@ -19,6 +19,10 @@ export default function PlayerLabels() {
 
   const nodes = useRef(new Map<string, HTMLDivElement>());
   const bubbleNodes = useRef(new Map<string, HTMLDivElement>());
+  const nameNodes = useRef(new Map<string, HTMLSpanElement>());
+  // Read inside the animation frame, which is set up once and never re-bound.
+  const myIdRef = useRef(mySessionId);
+  myIdRef.current = mySessionId;
 
   useEffect(() => {
     let frame = 0;
@@ -39,6 +43,15 @@ export default function PlayerLabels() {
         const fade = 1 - Math.min(1, anchor.distance / LABEL_MAX_DISTANCE) ** 2;
         node.style.opacity = fade.toFixed(2);
         node.style.transform = `translate3d(${anchor.x}px, ${anchor.y}px, 0) translate(-50%, -100%)`;
+
+        // The local player keeps their anchor - the chat bubble rides on it -
+        // but never their own name tag.
+        const nameNode = nameNodes.current.get(sessionId);
+        if (nameNode) {
+          nameNode.style.display = isNameTagVisible(anchor, sessionId === myIdRef.current)
+            ? 'block'
+            : 'none';
+        }
 
         const bubbleNode = bubbleNodes.current.get(sessionId);
         if (bubbleNode) {
@@ -83,11 +96,12 @@ export default function PlayerLabels() {
             style={{ display: 'none' }}
           />
           <span
-            className={`whitespace-nowrap rounded-sm px-1.5 py-0.5 text-2xs font-semibold ${
-              player.sessionId === mySessionId
-                ? 'bg-brand-600/80 text-content-primary'
-                : 'bg-surface-950/70 text-content-secondary'
-            }`}
+            ref={(node) => {
+              if (node) nameNodes.current.set(player.sessionId, node);
+              else nameNodes.current.delete(player.sessionId);
+            }}
+            className="whitespace-nowrap rounded-sm bg-surface-950/70 px-1.5 py-0.5 text-2xs font-semibold text-content-secondary"
+            style={{ display: 'none' }}
           >
             {player.displayName}
           </span>

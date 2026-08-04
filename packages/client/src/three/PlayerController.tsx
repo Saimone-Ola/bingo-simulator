@@ -5,8 +5,10 @@ import {
   AVATAR_EYE_HEIGHT,
   AVATAR_RUN_SPEED,
   AVATAR_WALK_SPEED,
+  CAMERA_MIN_HEIGHT,
   HUB_TICK_MS,
   resolvePosition,
+  sweepCameraFraction,
 } from '@bingo/shared';
 import { getRoom, sendMoveIntent } from '../net/hubConnection';
 import { readMoveAxes } from '../net/input';
@@ -28,6 +30,8 @@ const CAMERA_MAX_DISTANCE = 14;
 const CAMERA_MIN_PITCH = 0.15;
 const CAMERA_MAX_PITCH = 1.35;
 const LOOK_SENSITIVITY = 0.005;
+/** Closest the camera may be pulled towards the avatar when boxed in. */
+const CAMERA_MIN_CLEARANCE = 0.9;
 
 export default function PlayerController() {
   const { camera, gl } = useThree();
@@ -39,6 +43,8 @@ export default function PlayerController() {
   const sinceLastIntent = useRef(0);
   const target = useRef(new Vector3());
   const desired = useRef(new Vector3());
+  /** Fraction of the requested camera distance currently free of geometry. */
+  const occlusion = useRef(1);
 
   /* --- Pointer look. Bound to the canvas so UI panels keep their clicks. --- */
   useEffect(() => {
@@ -179,7 +185,31 @@ export default function PlayerController() {
     );
 
     // Keep the camera above the ground even when the player drags it low.
-    desired.current.y = Math.max(desired.current.y, 0.8);
+    desired.current.y = Math.max(desired.current.y, CAMERA_MIN_HEIGHT);
+
+    // Camera collision. Sweep from the avatar's head to where the player asked
+    // the camera to be and keep it in front of whatever it would have entered.
+    const free = sweepCameraFraction(
+      target.current.x,
+      target.current.y,
+      target.current.z,
+      desired.current.x,
+      desired.current.y,
+      desired.current.z,
+    );
+    // Never so close that the camera ends up inside the avatar's own head.
+    const floor = Math.min(1, CAMERA_MIN_CLEARANCE / Math.max(0.001, distance.current));
+    const allowed = Math.max(free, floor);
+
+    // Pull in the instant something gets in the way - a frame of seeing through
+    // a wall is worse than a hard cut - but ease back out once it is clear.
+    occlusion.current =
+      allowed < occlusion.current
+        ? allowed
+        : occlusion.current + (allowed - occlusion.current) * (1 - Math.exp(-6 * dt));
+
+    desired.current.lerpVectors(target.current, desired.current, occlusion.current);
+    desired.current.y = Math.max(desired.current.y, CAMERA_MIN_HEIGHT);
 
     camera.position.lerp(desired.current, 1 - Math.exp(-12 * dt));
     camera.lookAt(target.current);
