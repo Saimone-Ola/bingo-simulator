@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
   AVATAR_EYE_HEIGHT,
+  isSightBlocked,
   type AvatarAppearance,
   type AvatarBodyType,
   type AvatarHairStyle,
@@ -10,7 +11,7 @@ import {
 import { getRoom, type RemotePlayer } from '../net/hubConnection';
 import { useHubStore } from '../store/hub';
 import { localPlayer } from './localPlayer';
-import { LABEL_MAX_DISTANCE, labelAnchors } from './labels';
+import { labelAnchors, writeLabelAnchor, type LabelAnchor } from './labels';
 import ProceduralCharacter, {
   type CharacterAnimationState,
   type CharacterPersonality,
@@ -18,6 +19,8 @@ import ProceduralCharacter, {
 
 const CULL_DISTANCE = 46;
 const SMOOTHING_RATE = 14;
+/** Line-of-sight refresh period, roughly 8 Hz. */
+const SIGHT_CHECK_SECONDS = 0.125;
 
 interface SmoothedPose {
   x: number;
@@ -135,15 +138,24 @@ function HubCharacter({
   const [animation, setAnimation] = useState<CharacterAnimationState>('IDLE');
   const { camera } = useThree();
   const projected = useMemo(() => new THREE.Vector3(), []);
+  const anchorPoint = useMemo(() => new THREE.Vector3(), []);
+  // The anchor object is created once and mutated in place; PlayerLabels reads
+  // it from the shared map on its own animation frame.
+  const anchor = useMemo<LabelAnchor>(
+    () => ({ x: 0, y: 0, visible: false, distance: Number.POSITIVE_INFINITY }),
+    [],
+  );
+  const occluded = useRef(false);
+  const nextSightCheck = useRef(0);
   const phase = useMemo(() => phaseFor(sessionId), [sessionId]);
   const personality = useMemo(() => personalityFor(sessionId), [sessionId]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    labelAnchors.set(sessionId, anchor);
+    return () => {
       labelAnchors.delete(sessionId);
-    },
-    [sessionId],
-  );
+    };
+  }, [anchor, sessionId]);
 
   useFrame((state, rawDelta) => {
     const node = root.current;
@@ -173,7 +185,8 @@ function HubCharacter({
     const distance = Math.hypot(camera.position.x - current.x, camera.position.z - current.z);
     node.visible = distance < CULL_DISTANCE;
     if (!node.visible) {
-      labelAnchors.set(sessionId, { x: 0, y: 0, visible: false, distance });
+      anchor.visible = false;
+      anchor.distance = distance;
       return;
     }
 
@@ -186,23 +199,31 @@ function HubCharacter({
       setAnimation(nextAnimation);
     }
 
-    if (distance < LABEL_MAX_DISTANCE) {
-      const scale = appearance.heightCm / 175;
-      projected.set(
+    // Line of sight is re-tested a few times a second, not every frame, and the
+    // schedule is staggered per player so twenty avatars never all test on the
+    // same frame. The staleness that buys is invisible at walking speed.
+    if (state.clock.elapsedTime >= nextSightCheck.current) {
+      nextSightCheck.current = state.clock.elapsedTime + SIGHT_CHECK_SECONDS + phase * 0.01;
+      occluded.current = isSightBlocked(
+        camera.position.x,
+        camera.position.z,
         current.x,
-        (AVATAR_EYE_HEIGHT + 0.48) * scale,
         current.z,
       );
-      projected.project(camera);
-      labelAnchors.set(sessionId, {
-        x: (projected.x * 0.5 + 0.5) * state.size.width,
-        y: (-projected.y * 0.5 + 0.5) * state.size.height,
-        visible: projected.z < 1,
-        distance,
-      });
-    } else {
-      labelAnchors.set(sessionId, { x: 0, y: 0, visible: false, distance });
     }
+
+    const scale = appearance.heightCm / 175;
+    anchorPoint.set(current.x, (AVATAR_EYE_HEIGHT + 0.48) * scale, current.z);
+    writeLabelAnchor(
+      anchor,
+      camera,
+      anchorPoint,
+      state.size.width,
+      state.size.height,
+      distance,
+      occluded.current,
+      projected,
+    );
   });
 
   return (
