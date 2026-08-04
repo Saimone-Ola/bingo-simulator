@@ -5,9 +5,10 @@ import AuthPage from './routes/AuthPage';
 import HubPage from './routes/HubPage';
 import { useAuthStore } from './store/auth';
 
-// Developer-facing and rarely opened: never ship it in the entry chunk.
+// Developer-facing and rarely opened surfaces stay outside the entry chunk.
 const StyleGuidePage = lazy(() => import('./routes/StyleGuidePage'));
 const BingoPage = lazy(() => import('./routes/BingoPage'));
+const ThesisModePage = lazy(() => import('./routes/ThesisModePage'));
 
 function RouteLoader({ label }: { label: string }) {
   return (
@@ -35,8 +36,6 @@ export default function App() {
   const restore = useAuthStore((state) => state.restore);
   const user = useAuthStore((state) => state.user);
 
-  // Rehydrate the session once on boot: the persisted tokens are checked
-  // against the server before anything is rendered as signed in.
   useEffect(() => {
     void restore();
   }, [restore]);
@@ -51,6 +50,16 @@ export default function App() {
             element={
               <Protected>
                 <HubPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/tesi"
+            element={
+              <Protected>
+                <Suspense fallback={<RouteLoader label="Preparazione modalità tesi" />}>
+                  <ThesisModePage />
+                </Suspense>
               </Protected>
             }
           />
