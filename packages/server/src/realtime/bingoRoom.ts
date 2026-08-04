@@ -3,6 +3,7 @@ import { Room, ServerError, type Client } from 'colyseus';
 import {
   BINGO_CLIENT_MESSAGES,
   BINGO_SERVER_MESSAGES,
+  BingoEventDirector,
   bingoClaimSchema,
   bingoConfigSchema,
   bingoEmptySchema,
@@ -10,7 +11,9 @@ import {
   bingoPingSchema,
   bingoPurchaseSchema,
   bingoReadySchema,
+  effectiveBingoCallInterval,
   normaliseBingoRoomCode,
+  type ActiveBingoEvent,
   type AvatarAppearance,
   type BingoActionRejectedPayload,
   type BingoBallCalledPayload,
@@ -45,6 +48,7 @@ import { LobbyStateMachine } from './lobbyStateMachine';
 const RECONNECT_SECONDS = 60;
 const RESULTS_DURATION_MS = 7_000;
 const ENDED_DURATION_MS = 2_500;
+const EVENT_HISTORY_LIMIT = 5;
 
 const TIER_DEFAULTS: Record<
   BingoRoomTier,
@@ -102,6 +106,10 @@ export class BingoRoom extends Room {
   private hostSessionId = '';
   private round = 1;
   private seed = randomUUID();
+  private eventDirector = new BingoEventDirector(this.seed);
+  private activeEvent: ActiveBingoEvent | null = null;
+  private eventHistory: ActiveBingoEvent[] = [];
+  private eventResumeDelayMs = 0;
   private drawPool: number[] = [];
   private drawnNumbers: number[] = [];
   private currentNumber: number | null = null;
@@ -223,8 +231,7 @@ export class BingoRoom extends Room {
     }
 
     const participant: BingoParticipant =
-      preserved ??
-      {
+      preserved ?? {
         sessionId: client.sessionId,
         userId: auth.userId,
         displayName: auth.profile.displayName,
@@ -241,8 +248,6 @@ export class BingoRoom extends Room {
       };
 
     if (preserved) {
-      // Keep the same object identity while an async purchase/claim is in flight.
-      // Otherwise its database result would update an orphaned participant.
       preserved.sessionId = client.sessionId;
       preserved.connected = true;
       preserved.loading = false;
@@ -267,7 +272,6 @@ export class BingoRoom extends Room {
       participant.loading = true;
       this.sendAllSnapshots();
     }
-
     try {
       await this.allowReconnection(client, RECONNECT_SECONDS);
     } catch {
@@ -290,7 +294,6 @@ export class BingoRoom extends Room {
     if (this.byUser.get(participant.userId) === client.sessionId) {
       this.byUser.delete(participant.userId);
     }
-
     if (client.sessionId === this.hostSessionId) this.reassignHost();
     if (this.phases.phase === 'COUNTDOWN') this.cancelCountdown();
     this.sendAllSnapshots();
@@ -314,24 +317,21 @@ export class BingoRoom extends Room {
       balance: participant.balance,
     }));
 
-    const npcs: BingoPlayerSummary[] = Array.from(
-      { length: this.config.npcCount },
-      (_value, index) => ({
-        sessionId: `npc-${index + 1}`,
-        userId: `npc-${index + 1}`,
-        displayName: NPC_NAMES[index] ?? `Ospite ${index + 1}`,
-        level: 1 + index * 2,
-        ready: true,
-        cardCount: 1,
-        markingMode: 'AUTOMATIC',
-        appearance: NPC_APPEARANCES[index] ?? NPC_APPEARANCES[0]!,
-        isHost: false,
-        isNpc: true,
-        connected: true,
-        loading: false,
-        balance: 0,
-      }),
-    );
+    const npcs: BingoPlayerSummary[] = Array.from({ length: this.config.npcCount }, (_value, index) => ({
+      sessionId: `npc-${index + 1}`,
+      userId: `npc-${index + 1}`,
+      displayName: NPC_NAMES[index] ?? `Ospite ${index + 1}`,
+      level: 1 + index * 2,
+      ready: true,
+      cardCount: 1,
+      markingMode: 'AUTOMATIC',
+      appearance: NPC_APPEARANCES[index] ?? NPC_APPEARANCES[0]!,
+      isHost: false,
+      isNpc: true,
+      connected: true,
+      loading: false,
+      balance: 0,
+    }));
     return [...humans, ...npcs];
   }
 
@@ -358,6 +358,8 @@ export class BingoRoom extends Room {
       potCredits: this.potCredits,
       seedHash: createHash('sha256').update(this.seed).digest('hex').slice(0, 12),
       awardedTiers: [...this.awardedTiers],
+      activeEvent: this.activeEvent ? { ...this.activeEvent } : null,
+      eventHistory: this.eventHistory.map((event) => ({ ...event })),
     };
   }
 
@@ -370,38 +372,19 @@ export class BingoRoom extends Room {
     for (const client of this.clients) this.sendSnapshot(client);
   }
 
-  private reject(
-    client: Client,
-    action: ActionName,
-    reason: BingoActionRejectedPayload['reason'],
-  ): void {
-    const payload: BingoActionRejectedPayload = { action, reason };
-    client.send(BINGO_SERVER_MESSAGES.actionRejected, payload);
+  private reject(client: Client, action: ActionName, reason: BingoActionRejectedPayload['reason']): void {
+    client.send(BINGO_SERVER_MESSAGES.actionRejected, { action, reason } satisfies BingoActionRejectedPayload);
   }
 
-  private async purchaseCards(
-    client: Client,
-    request: { quantity: number; markingMode: BingoMarkingMode; requestId: string },
-  ): Promise<void> {
+  private async purchaseCards(client: Client, request: { quantity: number; markingMode: BingoMarkingMode; requestId: string }): Promise<void> {
     const participant = this.participants.get(client.sessionId);
     if (!participant) return;
-    if (this.phases.phase !== 'CARD_PURCHASE') {
-      return this.reject(client, 'purchaseCards', 'wrong_phase');
-    }
-    if (participant.cards.length > 0) {
-      return this.reject(client, 'purchaseCards', 'already_purchased');
-    }
-    if (participant.purchaseInProgress) {
-      return this.reject(client, 'purchaseCards', 'purchase_in_progress');
-    }
+    if (this.phases.phase !== 'CARD_PURCHASE') return this.reject(client, 'purchaseCards', 'wrong_phase');
+    if (participant.cards.length > 0) return this.reject(client, 'purchaseCards', 'already_purchased');
+    if (participant.purchaseInProgress) return this.reject(client, 'purchaseCards', 'purchase_in_progress');
 
-    const limit =
-      request.markingMode === 'MANUAL'
-        ? this.config.maxManualCards
-        : this.config.maxAutomaticCards;
-    if (request.quantity > limit) {
-      return this.reject(client, 'purchaseCards', 'invalid_payload');
-    }
+    const limit = request.markingMode === 'MANUAL' ? this.config.maxManualCards : this.config.maxAutomaticCards;
+    if (request.quantity > limit) return this.reject(client, 'purchaseCards', 'invalid_payload');
 
     participant.purchaseInProgress = true;
     const total = request.quantity * this.config.cardPrice;
@@ -411,15 +394,8 @@ export class BingoRoom extends Room {
         amount: -total,
         reason: 'bingo_card_purchase',
         idempotencyKey: `bingo:${this.roomCode}:${this.round}:${participant.userId}:purchase:${request.requestId}`,
-        metadata: {
-          roomCode: this.roomCode,
-          round: this.round,
-          quantity: request.quantity,
-          markingMode: request.markingMode,
-          tier: this.config.tier,
-        },
+        metadata: { roomCode: this.roomCode, round: this.round, quantity: request.quantity, markingMode: request.markingMode, tier: this.config.tier },
       });
-
       participant.balance = entry.balanceAfter;
       participant.markingMode = request.markingMode;
       participant.cards = this.issueCards(participant, request.quantity, request.requestId);
@@ -439,17 +415,9 @@ export class BingoRoom extends Room {
     }
   }
 
-  private issueCards(
-    participant: BingoParticipant,
-    quantity: number,
-    requestId: string,
-  ): ItalianBingoCard[] {
+  private issueCards(participant: BingoParticipant, quantity: number, requestId: string): ItalianBingoCard[] {
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      const cards = createUniqueItalianCards(
-        quantity,
-        `${this.seed}:${participant.userId}:${requestId}:${attempt}`,
-        `${this.round}-${participant.userId.slice(0, 8)}`,
-      );
+      const cards = createUniqueItalianCards(quantity, `${this.seed}:${participant.userId}:${requestId}:${attempt}`, `${this.round}-${participant.userId.slice(0, 8)}`);
       if (cards.every((card) => !this.issuedSignatures.has(cardSignature(card)))) {
         cards.forEach((card) => this.issuedSignatures.add(cardSignature(card)));
         return cards;
@@ -461,35 +429,19 @@ export class BingoRoom extends Room {
   private setReady(client: Client, ready: boolean): void {
     const participant = this.participants.get(client.sessionId);
     if (!participant) return;
-    if (this.phases.phase !== 'CARD_PURCHASE') {
-      return this.reject(client, 'setReady', 'wrong_phase');
-    }
-    if (participant.cards.length === 0) {
-      return this.reject(client, 'setReady', 'cards_required');
-    }
+    if (this.phases.phase !== 'CARD_PURCHASE') return this.reject(client, 'setReady', 'wrong_phase');
+    if (participant.cards.length === 0) return this.reject(client, 'setReady', 'cards_required');
     participant.ready = ready;
     this.sendAllSnapshots();
     this.evaluateAutomaticStart();
   }
 
-  private updateConfig(
-    client: Client,
-    request: {
-      startMode: RoomBingoConfig['startMode'];
-      countdownSeconds: number;
-      numberCallInterval: number;
-      npcCount: number;
-      tier: RoomBingoConfig['tier'];
-      chaosLevel: RoomBingoConfig['chaosLevel'];
-    },
-  ): void {
-    if (client.sessionId !== this.hostSessionId) {
-      return this.reject(client, 'updateConfig', 'host_only');
-    }
-    if (this.phases.phase !== 'CARD_PURCHASE') {
-      return this.reject(client, 'updateConfig', 'configuration_locked');
-    }
+  private updateConfig(client: Client, request: Pick<RoomBingoConfig, 'startMode' | 'countdownSeconds' | 'numberCallInterval' | 'npcCount' | 'tier' | 'chaosLevel'>): void {
+    if (client.sessionId !== this.hostSessionId) return this.reject(client, 'updateConfig', 'host_only');
+    if (this.phases.phase !== 'CARD_PURCHASE') return this.reject(client, 'updateConfig', 'configuration_locked');
     const tier = TIER_DEFAULTS[request.tier];
+    const standardEvents = ['distracted-waiter', 'broken-microphone', 'false-bingo'];
+    const chaoticEvents = [...standardEvents, 'blackout', 'confetti'];
     this.config = {
       ...this.config,
       ...request,
@@ -498,37 +450,28 @@ export class BingoRoom extends Room {
       enabledEvents:
         request.chaosLevel === 'CLASSIC'
           ? []
-          : ['distracted-waiter', 'broken-microphone', 'blackout', 'false-bingo', 'confetti'],
+          : request.chaosLevel === 'LIGHT'
+            ? standardEvents
+            : request.chaosLevel === 'CHAOTIC'
+              ? chaoticEvents
+              : [...chaoticEvents, 'zombie-outbreak'],
     };
     this.sendAllSnapshots();
     this.evaluateAutomaticStart();
   }
 
   private requestStart(client: Client): void {
-    if (client.sessionId !== this.hostSessionId) {
-      return this.reject(client, 'startGame', 'host_only');
-    }
-    if (this.phases.phase !== 'CARD_PURCHASE') {
-      return this.reject(client, 'startGame', 'wrong_phase');
-    }
-    if (!this.hasMinimumPlayers()) {
-      return this.reject(client, 'startGame', 'minimum_players');
-    }
-    if (!this.allHumansHaveCards()) {
-      return this.reject(client, 'startGame', 'cards_required');
-    }
+    if (client.sessionId !== this.hostSessionId) return this.reject(client, 'startGame', 'host_only');
+    if (this.phases.phase !== 'CARD_PURCHASE') return this.reject(client, 'startGame', 'wrong_phase');
+    if (!this.hasMinimumPlayers()) return this.reject(client, 'startGame', 'minimum_players');
+    if (!this.allHumansHaveCards()) return this.reject(client, 'startGame', 'cards_required');
     this.beginCountdown();
   }
 
   private cancelStart(client: Client): void {
-    if (client.sessionId !== this.hostSessionId) {
-      return this.reject(client, 'cancelStart', 'host_only');
-    }
-    if (this.phases.phase !== 'COUNTDOWN') {
-      return this.reject(client, 'cancelStart', 'wrong_phase');
-    }
+    if (client.sessionId !== this.hostSessionId) return this.reject(client, 'cancelStart', 'host_only');
+    if (this.phases.phase !== 'COUNTDOWN') return this.reject(client, 'cancelStart', 'wrong_phase');
     this.cancelCountdown();
-    this.sendAllSnapshots();
   }
 
   private beginCountdown(): void {
@@ -548,11 +491,7 @@ export class BingoRoom extends Room {
   private evaluateAutomaticStart(): void {
     if (this.phases.phase !== 'CARD_PURCHASE') return;
     if (!this.hasMinimumPlayers() || !this.allHumansHaveCards()) return;
-
-    if (
-      this.config.startMode === 'ALL_READY' &&
-      [...this.participants.values()].every((participant) => participant.ready)
-    ) {
+    if (this.config.startMode === 'ALL_READY' && [...this.participants.values()].every((participant) => participant.ready)) {
       this.beginCountdown();
     } else if (this.config.startMode === 'TIMER') {
       this.beginCountdown();
@@ -564,47 +503,59 @@ export class BingoRoom extends Room {
   }
 
   private allHumansHaveCards(): boolean {
-    return (
-      this.participants.size > 0 &&
-      [...this.participants.values()].every((participant) => participant.cards.length > 0)
-    );
+    return this.participants.size > 0 && [...this.participants.values()].every((participant) => participant.cards.length > 0);
   }
 
   private tick(): void {
     const now = Date.now();
-    if (
-      this.phases.phase === 'COUNTDOWN' &&
-      this.countdownEndsAt !== null &&
-      now >= this.countdownEndsAt
-    ) {
+    if (this.phases.phase === 'COUNTDOWN' && this.countdownEndsAt !== null && now >= this.countdownEndsAt) {
       this.startPlaying();
       return;
     }
-    if (
-      this.phases.phase === 'PLAYING' &&
-      this.nextDrawAt !== null &&
-      now >= this.nextDrawAt
-    ) {
+    if (this.phases.phase === 'EVENT_ACTIVE' && this.activeEvent && now >= this.activeEvent.endsAt) {
+      this.finishEvent(now);
+      return;
+    }
+    if (this.phases.phase === 'PLAYING' && this.nextDrawAt !== null && now >= this.nextDrawAt) {
+      if (this.tryStartEvent(now)) return;
       this.drawNumber();
       return;
     }
-    if (
-      this.phases.phase === 'RESULTS' &&
-      this.phaseEndsAt !== null &&
-      now >= this.phaseEndsAt
-    ) {
+    if (this.phases.phase === 'RESULTS' && this.phaseEndsAt !== null && now >= this.phaseEndsAt) {
       this.phases.transition('ENDED');
       this.phaseEndsAt = now + ENDED_DURATION_MS;
       this.sendAllSnapshots();
       return;
     }
-    if (
-      this.phases.phase === 'ENDED' &&
-      this.phaseEndsAt !== null &&
-      now >= this.phaseEndsAt
-    ) {
-      this.prepareNextRound();
-    }
+    if (this.phases.phase === 'ENDED' && this.phaseEndsAt !== null && now >= this.phaseEndsAt) this.prepareNextRound();
+  }
+
+  private tryStartEvent(now: number): boolean {
+    const event = this.eventDirector.maybeStart({
+      now,
+      drawIndex: this.drawnNumbers.length,
+      chaosLevel: this.config.chaosLevel,
+      enabledEvents: this.config.enabledEvents,
+      activeEvent: this.activeEvent,
+    });
+    if (!event) return false;
+    this.activeEvent = event;
+    this.eventHistory = [event, ...this.eventHistory].slice(0, EVENT_HISTORY_LIMIT);
+    this.eventResumeDelayMs = effectiveBingoCallInterval(this.config.numberCallInterval, event);
+    this.nextDrawAt = null;
+    this.phases.transition('EVENT_ACTIVE', now);
+    this.sendAllSnapshots();
+    return true;
+  }
+
+  private finishEvent(now: number): void {
+    if (this.phases.phase !== 'EVENT_ACTIVE' || !this.activeEvent) return;
+    this.eventDirector.finish(this.activeEvent, now);
+    this.activeEvent = null;
+    this.phases.transition('PLAYING', now);
+    this.nextDrawAt = now + Math.max(750, this.eventResumeDelayMs);
+    this.eventResumeDelayMs = 0;
+    this.sendAllSnapshots();
   }
 
   private startPlaying(): void {
@@ -614,6 +565,9 @@ export class BingoRoom extends Room {
     this.drawPool = createItalianDrawPool(this.seed);
     this.drawnNumbers = [];
     this.currentNumber = null;
+    this.activeEvent = null;
+    this.eventHistory = [];
+    this.eventDirector.reset(this.seed);
     this.nextDrawAt = Date.now() + 1_500;
     this.sendAllSnapshots();
   }
@@ -621,10 +575,7 @@ export class BingoRoom extends Room {
   private drawNumber(): void {
     if (this.phases.phase !== 'PLAYING') return;
     const number = this.drawPool.shift();
-    if (number === undefined) {
-      this.finishRound();
-      return;
-    }
+    if (number === undefined) return this.finishRound();
 
     this.currentNumber = number;
     this.drawnNumbers.push(number);
@@ -647,23 +598,15 @@ export class BingoRoom extends Room {
     this.sendAllSnapshots();
   }
 
-  private markCell(
-    client: Client,
-    request: { round: number; cardIndex: number; cellIndex: number; marked: boolean },
-  ): void {
+  private markCell(client: Client, request: { round: number; cardIndex: number; cellIndex: number; marked: boolean }): void {
     const participant = this.participants.get(client.sessionId);
     if (!participant) return;
-    if (this.phases.phase !== 'PLAYING' || request.round !== this.round) {
+    if ((this.phases.phase !== 'PLAYING' && this.phases.phase !== 'EVENT_ACTIVE') || request.round !== this.round) {
       return this.reject(client, 'markCell', 'wrong_phase');
     }
-    if (participant.markingMode !== 'MANUAL') {
-      return this.reject(client, 'markCell', 'manual_marking_only');
-    }
+    if (participant.markingMode !== 'MANUAL') return this.reject(client, 'markCell', 'manual_marking_only');
     const card = participant.cards[request.cardIndex];
-    if (!card || card.cells[request.cellIndex] === null) {
-      return this.reject(client, 'markCell', 'invalid_cell');
-    }
-
+    if (!card || card.cells[request.cellIndex] === null) return this.reject(client, 'markCell', 'invalid_cell');
     const marks = new Set(card.markedIndices);
     if (request.marked) marks.add(request.cellIndex);
     else marks.delete(request.cellIndex);
@@ -671,44 +614,24 @@ export class BingoRoom extends Room {
     this.sendSnapshot(client);
   }
 
-  private async handleClaim(
-    client: Client,
-    request: {
-      round: number;
-      tier: BingoClaimTier;
-      cardIndex: number;
-      requestId: string;
-    },
-  ): Promise<void> {
+  private async handleClaim(client: Client, request: { round: number; tier: BingoClaimTier; cardIndex: number; requestId: string }): Promise<void> {
     const reject = (reason: BingoClaimRejectedPayload['reason']) => {
-      const payload: BingoClaimRejectedPayload = {
-        round: this.round,
-        tier: request.tier,
-        reason,
-      };
-      client.send(BINGO_SERVER_MESSAGES.claimRejected, payload);
+      client.send(BINGO_SERVER_MESSAGES.claimRejected, { round: this.round, tier: request.tier, reason } satisfies BingoClaimRejectedPayload);
     };
-
     if (request.round !== this.round) return reject('round_changed');
-    if (this.phases.phase !== 'PLAYING' && this.phases.phase !== 'EVENT_ACTIVE') {
-      return reject('wrong_phase');
-    }
+    if (this.phases.phase !== 'PLAYING' && this.phases.phase !== 'EVENT_ACTIVE') return reject('wrong_phase');
     if (this.awardedTiers.has(request.tier)) return reject('already_awarded');
 
     const participant = this.participants.get(client.sessionId);
     const card = participant?.cards[request.cardIndex];
     if (!participant || !card) return reject('invalid_card');
-
     const drawn = new Set(this.drawnNumbers);
-    const winningNumbers =
-      request.tier === 'CINQUINA'
-        ? findCinquinaNumbers(card, drawn)
-        : findBingoNumbers(card, drawn);
+    const winningNumbers = request.tier === 'CINQUINA' ? findCinquinaNumbers(card, drawn) : findBingoNumbers(card, drawn);
     if (!winningNumbers) return reject('incomplete_result');
 
     this.awardedTiers.add(request.tier);
     const prizeCredits = await this.awardPrize(participant, request.tier);
-    const winner: BingoWinnerPayload = {
+    this.broadcast(BINGO_SERVER_MESSAGES.winner, {
       round: this.round,
       tier: request.tier,
       sessionId: participant.sessionId,
@@ -716,24 +639,15 @@ export class BingoRoom extends Room {
       cardIndex: request.cardIndex,
       winningNumbers,
       prizeCredits,
-    };
-    this.broadcast(BINGO_SERVER_MESSAGES.winner, winner);
-
+    } satisfies BingoWinnerPayload);
     if (request.tier === 'BINGO') this.finishRound();
     else this.sendAllSnapshots();
   }
 
-  private async awardPrize(
-    participant: BingoParticipant,
-    tier: BingoClaimTier,
-  ): Promise<number> {
+  private async awardPrize(participant: BingoParticipant, tier: BingoClaimTier): Promise<number> {
     const remaining = Math.max(0, this.potCredits - this.paidCredits);
-    const prize =
-      tier === 'CINQUINA'
-        ? Math.max(1, Math.floor(this.potCredits * 0.25))
-        : remaining;
+    const prize = tier === 'CINQUINA' ? Math.max(1, Math.floor(this.potCredits * 0.25)) : remaining;
     if (prize <= 0) return 0;
-
     try {
       const entry = await postLedgerEntryAtomic({
         userId: participant.userId,
@@ -752,9 +666,9 @@ export class BingoRoom extends Room {
   }
 
   private finishRound(): void {
-    if (this.phases.phase === 'EVENT_ACTIVE') this.phases.transition('RESULTS');
-    else if (this.phases.phase === 'PLAYING') this.phases.transition('RESULTS');
-    else return;
+    if (this.phases.phase !== 'PLAYING' && this.phases.phase !== 'EVENT_ACTIVE') return;
+    this.activeEvent = null;
+    this.phases.transition('RESULTS');
     this.nextDrawAt = null;
     this.phaseEndsAt = Date.now() + RESULTS_DURATION_MS;
     this.sendAllSnapshots();
@@ -765,6 +679,10 @@ export class BingoRoom extends Room {
     this.phases.transition('CARD_PURCHASE');
     this.round += 1;
     this.seed = randomUUID();
+    this.eventDirector.reset(this.seed);
+    this.activeEvent = null;
+    this.eventHistory = [];
+    this.eventResumeDelayMs = 0;
     this.drawPool = [];
     this.drawnNumbers = [];
     this.currentNumber = null;
@@ -787,9 +705,7 @@ export class BingoRoom extends Room {
   private reassignHost(): void {
     const next = this.participants.values().next().value as BingoParticipant | undefined;
     this.hostSessionId = next?.sessionId ?? '';
-    for (const participant of this.participants.values()) {
-      participant.isHost = participant.sessionId === this.hostSessionId;
-    }
+    for (const participant of this.participants.values()) participant.isHost = participant.sessionId === this.hostSessionId;
   }
 
   private logError(message: string, error: unknown): void {

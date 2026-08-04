@@ -14,6 +14,7 @@ import {
   type RoomBingoConfig,
 } from '@bingo/shared';
 import { wsOrigin } from '../lib/apiOrigin';
+import { clearBingoEventSnapshot, publishBingoEventSnapshot } from './bingoEventBus';
 
 export type BingoConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'failed';
 
@@ -157,6 +158,7 @@ export async function connectToBingo(
 
   joined.onMessage(BINGO_SERVER_MESSAGES.snapshot, (payload: BingoSnapshotPayload) => {
     if (payload.myCards.length > 0) clearPendingPurchase();
+    publishBingoEventSnapshot(payload);
     handlers.onSnapshot(payload);
   });
   joined.onMessage(BINGO_SERVER_MESSAGES.ballCalled, handlers.onBall);
@@ -165,10 +167,7 @@ export async function connectToBingo(
   joined.onMessage(
     BINGO_SERVER_MESSAGES.actionRejected,
     (payload: BingoActionRejectedPayload) => {
-      if (
-        payload.action === 'purchaseCards' &&
-        payload.reason !== 'purchase_in_progress'
-      ) {
+      if (payload.action === 'purchaseCards' && payload.reason !== 'purchase_in_progress') {
         clearPendingPurchase();
       }
       handlers.onActionRejected(payload);
@@ -178,6 +177,7 @@ export async function connectToBingo(
   joined.onLeave((code) => {
     if (version !== connectionVersion) return;
     room = null;
+    clearBingoEventSnapshot();
     if (deliberateLeave || code === 4001) {
       handlers.onStatus('disconnected');
       return;
@@ -197,17 +197,10 @@ export async function connectToBingo(
   flushQueuedMessages(joined);
 }
 
-export function purchaseBingoCards(
-  quantity: number,
-  markingMode: BingoMarkingMode,
-): void {
+export function purchaseBingoCards(quantity: number, markingMode: BingoMarkingMode): void {
   if (pendingPurchase) return;
   pendingPurchase = {
-    payload: {
-      quantity,
-      markingMode,
-      requestId: requestId('purchase'),
-    },
+    payload: { quantity, markingMode, requestId: requestId('purchase') },
     attempts: 1,
     timer: null,
   };
@@ -236,25 +229,11 @@ export function cancelBingoStart(): void {
   sendBingoMessage(BINGO_CLIENT_MESSAGES.cancelStart, {});
 }
 
-export function markBingoCell(
-  round: number,
-  cardIndex: number,
-  cellIndex: number,
-  marked: boolean,
-): void {
-  sendBingoMessage(BINGO_CLIENT_MESSAGES.markCell, {
-    round,
-    cardIndex,
-    cellIndex,
-    marked,
-  });
+export function markBingoCell(round: number, cardIndex: number, cellIndex: number, marked: boolean): void {
+  sendBingoMessage(BINGO_CLIENT_MESSAGES.markCell, { round, cardIndex, cellIndex, marked });
 }
 
-export function claimBingo(
-  round: number,
-  tier: BingoClaimTier,
-  cardIndex: number,
-): void {
+export function claimBingo(round: number, tier: BingoClaimTier, cardIndex: number): void {
   sendBingoMessage(BINGO_CLIENT_MESSAGES.claim, {
     round,
     tier,
@@ -268,6 +247,7 @@ export async function leaveBingo(): Promise<void> {
   connectionVersion += 1;
   queuedMessages.length = 0;
   clearPendingPurchase();
+  clearBingoEventSnapshot();
   if (reconnectTimer !== null) {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
