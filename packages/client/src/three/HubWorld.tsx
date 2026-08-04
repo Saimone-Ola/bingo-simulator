@@ -3,6 +3,7 @@ import { Html, Sky, Sparkles } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import type { Group } from 'three';
 import { HUB_BOUNDS, HUB_OBSTACLES, HUB_POIS } from '@bingo/shared';
+import { useLabelVisibility } from './useLabelVisibility';
 
 const COLORS = {
   ground: '#8272d8',
@@ -104,27 +105,43 @@ function Perimeter() {
   );
 }
 
+/**
+ * Billboard over a destination.
+ *
+ * `maxDistance` is per sign on purpose: the fountain's plaque is scenery and
+ * only worth reading from nearby, while a destination sign has to be findable
+ * from across the plaza.
+ */
 function WorldSign({
   position,
   title,
   subtitle,
   color,
+  maxDistance = 40,
 }: {
   position: [number, number, number];
   title: string;
   subtitle: string;
   color: string;
+  maxDistance?: number;
 }) {
+  const anchor = useRef<Group>(null);
+  const visible = useLabelVisibility(anchor, maxDistance);
+
   return (
-    <Html position={position} center distanceFactor={13} zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
-      <div className="world-sign" style={{ borderColor: color, boxShadow: `0 12px 34px -16px ${color}` }}>
-        <span className="world-sign-dot" style={{ background: color, boxShadow: `0 0 14px ${color}` }} />
-        <div>
-          <strong>{title}</strong>
-          <small>{subtitle}</small>
-        </div>
-      </div>
-    </Html>
+    <group ref={anchor} position={position}>
+      {visible && (
+        <Html center distanceFactor={13} zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
+          <div className="world-sign" style={{ borderColor: color, boxShadow: `0 12px 34px -16px ${color}` }}>
+            <span className="world-sign-dot" style={{ background: color, boxShadow: `0 0 14px ${color}` }} />
+            <div>
+              <strong>{title}</strong>
+              <small>{subtitle}</small>
+            </div>
+          </div>
+        </Html>
+      )}
+    </group>
   );
 }
 
@@ -366,6 +383,7 @@ function Fountain() {
         title="PIAZZA CENTRALE"
         subtitle="Landmark scenico · area non accessibile"
         color={COLORS.cyan}
+        maxDistance={15}
       />
     </group>
   );
@@ -441,6 +459,23 @@ function Lamps() {
   );
 }
 
+function PoiChip({ label, unlocked }: { label: string; unlocked: boolean }) {
+  const anchor = useRef<Group>(null);
+  const visible = useLabelVisibility(anchor, 28);
+
+  return (
+    <group ref={anchor} position={[0, 0.35, 0]}>
+      {visible && (
+        <Html center distanceFactor={16} zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
+          <div className={`poi-chip ${unlocked ? 'poi-chip-ready' : ''}`}>
+            {unlocked ? 'ENTRA' : 'PRESTO'} · {label}
+          </div>
+        </Html>
+      )}
+    </group>
+  );
+}
+
 function PointsOfInterest({ currentPhase }: { currentPhase: number }) {
   const pads = useMemo(
     () =>
@@ -471,11 +506,7 @@ function PointsOfInterest({ currentPhase }: { currentPhase: number }) {
               opacity={poi.unlocked ? 1 : 0.5}
             />
           </mesh>
-          <Html position={[0, 0.35, 0]} center distanceFactor={16} zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
-            <div className={`poi-chip ${poi.unlocked ? 'poi-chip-ready' : ''}`}>
-              {poi.unlocked ? 'ENTRA' : 'PRESTO'} · {poi.label}
-            </div>
-          </Html>
+          <PoiChip label={poi.label} unlocked={poi.unlocked} />
         </group>
       ))}
     </group>
