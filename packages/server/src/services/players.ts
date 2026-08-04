@@ -1,5 +1,11 @@
 import { eq } from 'drizzle-orm';
-import type { AvatarAppearance } from '@bingo/shared';
+import {
+  AVATAR_ACCESSORIES,
+  AVATAR_BROW_STYLES,
+  AVATAR_EYE_STYLES,
+  AVATAR_MOUTH_STYLES,
+  type AvatarAppearance,
+} from '@bingo/shared';
 import { db } from '../db/client';
 import { avatars, users } from '../db/schema';
 
@@ -30,6 +36,31 @@ function readColorway(colorway: unknown, key: string, fallback: string): string 
   if (typeof colorway !== 'object' || colorway === null) return fallback;
   const value = (colorway as Record<string, unknown>)[key];
   return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+}
+
+/**
+ * Face and accessory choices live inside the existing `colorway` JSON column.
+ *
+ * They arrived after the avatars table shipped, and a JSON key needs no
+ * migration, no backfill and no downtime — an avatar saved before they existed
+ * simply reads back as `undefined` and the client applies its defaults.
+ */
+function readEnum<T extends string>(
+  colorway: unknown,
+  key: string,
+  allowed: readonly T[],
+): T | undefined {
+  if (typeof colorway !== 'object' || colorway === null) return undefined;
+  const value = (colorway as Record<string, unknown>)[key];
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : undefined;
+}
+
+function readOptionalColour(colorway: unknown, key: string): string | undefined {
+  if (typeof colorway !== 'object' || colorway === null) return undefined;
+  const value = (colorway as Record<string, unknown>)[key];
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : undefined;
 }
 
 export async function loadPlayerProfile(userId: string): Promise<PlayerProfile | null> {
@@ -66,6 +97,12 @@ export async function loadPlayerProfile(userId: string): Promise<PlayerProfile |
       shirtColor: readColorway(row.colorway, 'shirt', DEFAULT_APPEARANCE.shirtColor),
       pantsColor: readColorway(row.colorway, 'pants', DEFAULT_APPEARANCE.pantsColor),
       heightCm: row.heightCm ?? DEFAULT_APPEARANCE.heightCm,
+      eyeStyle: readEnum(row.colorway, 'eyeStyle', AVATAR_EYE_STYLES),
+      eyeColor: readOptionalColour(row.colorway, 'eyeColor'),
+      browStyle: readEnum(row.colorway, 'browStyle', AVATAR_BROW_STYLES),
+      mouthStyle: readEnum(row.colorway, 'mouthStyle', AVATAR_MOUTH_STYLES),
+      accessory: readEnum(row.colorway, 'accessory', AVATAR_ACCESSORIES),
+      accessoryColor: readOptionalColour(row.colorway, 'accessoryColor'),
     },
   };
 }
@@ -86,7 +123,16 @@ export async function saveAvatarAppearance(
     hairStyle: appearance.hairStyle,
     hairColor: appearance.hairColor,
     heightCm: appearance.heightCm,
-    colorway: { shirt: appearance.shirtColor, pants: appearance.pantsColor },
+    colorway: {
+      shirt: appearance.shirtColor,
+      pants: appearance.pantsColor,
+      eyeStyle: appearance.eyeStyle,
+      eyeColor: appearance.eyeColor,
+      browStyle: appearance.browStyle,
+      mouthStyle: appearance.mouthStyle,
+      accessory: appearance.accessory,
+      accessoryColor: appearance.accessoryColor,
+    },
     updatedAt: new Date(),
   };
 
