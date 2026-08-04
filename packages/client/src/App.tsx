@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, type RouteProps } from 'react-router-dom';
 import AppErrorBoundary from './components/AppErrorBoundary';
+import BingoEventOverlay from './components/BingoEventOverlay';
 import AuthPage from './routes/AuthPage';
 import HubPage from './routes/HubPage';
 import { useAuthStore } from './store/auth';
@@ -43,6 +44,7 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <BrowserRouter>
+        <BingoEventOverlay />
         <Routes>
           <Route path="/" element={user ? <Navigate to="/hub" replace /> : <AuthPage />} />
           <Route
