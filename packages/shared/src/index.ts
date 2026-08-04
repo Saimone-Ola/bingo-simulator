@@ -10,3 +10,5 @@ export * from './protocol';
 export * from './avatar';
 export * from './bingo';
 export * from './bingoEvents';
+export * from './slots';
+export * from './slotPresets';
