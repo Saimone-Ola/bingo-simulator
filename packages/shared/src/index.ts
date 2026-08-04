@@ -9,3 +9,4 @@ export * from './protocol';
 
 export * from './avatar';
 export * from './bingo';
+export * from './bingoEvents';
