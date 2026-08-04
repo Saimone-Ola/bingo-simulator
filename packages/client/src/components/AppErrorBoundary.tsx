@@ -19,27 +19,27 @@ export default class AppErrorBoundary extends Component<
   AppErrorBoundaryProps,
   AppErrorBoundaryState
 > {
-  state: AppErrorBoundaryState = { error: null };
+  override state: AppErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
     return { error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
     // Keep the structured stack in the browser console for the developer while
     // the public UI only shows a short, non-sensitive diagnostic.
     console.error('Bingo Simulator render failure', error, info.componentStack);
   }
 
-  private retry = () => {
+  private retry = (): void => {
     this.setState({ error: null });
   };
 
-  private reload = () => {
+  private reload = (): void => {
     window.location.reload();
   };
 
-  render() {
+  override render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
 
