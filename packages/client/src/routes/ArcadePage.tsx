@@ -172,9 +172,18 @@ export default function ArcadePage() {
             </p>
           </div>
         </div>
-        <div className="pointer-events-auto rounded-lg border border-surface-600 bg-surface-900/60 px-3 py-2 text-right backdrop-blur">
-          <p className="text-2xs uppercase tracking-[0.16em] text-content-muted">Saldo</p>
-          <p className="tabular font-semibold text-accent-300">{balance} crediti</p>
+        <div className="pointer-events-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/arcade/editor')}
+            className="rounded-lg border border-surface-600 bg-surface-900/60 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-brand-300 backdrop-blur hover:border-brand-400"
+          >
+            Editor slot
+          </button>
+          <div className="rounded-lg border border-surface-600 bg-surface-900/60 px-3 py-2 text-right backdrop-blur">
+            <p className="text-2xs uppercase tracking-[0.16em] text-content-muted">Saldo</p>
+            <p className="tabular font-semibold text-accent-300">{balance} crediti</p>
+          </div>
         </div>
       </header>
 
