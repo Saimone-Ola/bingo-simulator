@@ -12,3 +12,4 @@ export * from './bingo';
 export * from './bingoEvents';
 export * from './slots';
 export * from './slotPresets';
+export * from './slotProtocol';

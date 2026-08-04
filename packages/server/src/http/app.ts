@@ -11,6 +11,7 @@ import { sanitizeError } from '../logging';
 import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallet';
 import avatarRoutes from './routes/avatar';
+import slotRoutes from './routes/slots';
 
 /**
  * The REST API, mounted into the Colyseus process.
@@ -79,6 +80,7 @@ export function mountApi(app: Application): Application {
   app.use('/api/auth', authRoutes);
   app.use('/api/wallet', walletRoutes);
   app.use('/api/avatar', avatarRoutes);
+  app.use('/api/slots', slotRoutes);
 
   app.use('/api', (_request, response) => {
     const body: ApiErrorBody = { error: { code: 'not_found', message: 'Route not found' } };

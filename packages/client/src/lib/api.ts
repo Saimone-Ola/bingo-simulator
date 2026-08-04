@@ -3,6 +3,12 @@ import {
   type ApiErrorCode,
   type AuthResponse,
   type AvatarAppearance,
+  type SlotCommitment,
+  type SlotConfig,
+  type SlotMachineDetail,
+  type SlotMachineSummary,
+  type SlotSimulationReport,
+  type SlotSpinResponse,
 } from '@bingo/shared';
 import { apiOrigin } from './apiOrigin';
 
@@ -127,5 +133,37 @@ export const api = {
     request<{ appearance: AvatarAppearance }>('/api/avatar', {
       method: 'PATCH',
       body: appearance,
+    }),
+
+  /* --- Slot machines. The client sends configurations and bets, never
+     outcomes: every grid, seed and payout in these responses was computed by
+     the server. --- */
+  slots: (query: { mine?: boolean; limit?: number } = {}) => {
+    const search = new URLSearchParams();
+    if (query.mine) search.set('mine', 'true');
+    if (query.limit) search.set('limit', String(query.limit));
+    const suffix = search.toString();
+    return request<{ machines: SlotMachineSummary[] }>(`/api/slots${suffix ? `?${suffix}` : ''}`);
+  },
+  slot: (id: string) => request<{ machine: SlotMachineDetail }>(`/api/slots/${id}`),
+  createSlot: (body: unknown) =>
+    request<{ machine: SlotMachineDetail }>('/api/slots', { method: 'POST', body }),
+  updateSlot: (id: string, body: unknown) =>
+    request<{ machine: SlotMachineDetail }>(`/api/slots/${id}`, { method: 'PATCH', body }),
+  simulateSlot: (config: SlotConfig, spins: number) =>
+    request<{ report: SlotSimulationReport }>('/api/slots/simulate', {
+      method: 'POST',
+      body: { config, spins },
+    }),
+  publishSlot: (id: string) =>
+    request<{ machine: SlotMachineDetail; report: SlotSimulationReport; simulationSpins: number }>(
+      `/api/slots/${id}/publish`,
+      { method: 'POST' },
+    ),
+  slotCommitment: (id: string) => request<SlotCommitment>(`/api/slots/${id}/commit`),
+  spinSlot: (id: string, betPerLine: number, requestId: string) =>
+    request<{ spin: SlotSpinResponse }>(`/api/slots/${id}/spin`, {
+      method: 'POST',
+      body: { betPerLine, requestId },
     }),
 };
