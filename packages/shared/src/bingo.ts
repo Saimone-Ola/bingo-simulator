@@ -1,4 +1,5 @@
 import type { AvatarAppearance } from './avatar';
+import type { ActiveBingoEvent } from './bingoEvents';
 
 import { z } from 'zod';
 
@@ -93,6 +94,10 @@ export interface BingoSnapshotPayload {
   potCredits: number;
   seedHash: string;
   awardedTiers: BingoClaimTier[];
+  /** Server-authoritative event currently affecting the entire room. */
+  activeEvent: ActiveBingoEvent | null;
+  /** Most recent room events, newest first, useful for reconnects and the thesis HUD. */
+  eventHistory: ActiveBingoEvent[];
 }
 
 export interface BingoBallCalledPayload {
