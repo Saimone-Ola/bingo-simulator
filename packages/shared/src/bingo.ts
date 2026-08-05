@@ -1,5 +1,7 @@
 import type { AvatarAppearance } from './avatar';
 import type { ActiveBingoEvent } from './bingoEvents';
+import type { SeatOccupancy, SeatRejectionReason } from './bingoSeating';
+import type { PrizeBreakdown } from './prizePool';
 
 import { z } from 'zod';
 
@@ -92,12 +94,31 @@ export interface BingoSnapshotPayload {
   currentNumber: number | null;
   nextDrawAt: number | null;
   potCredits: number;
+  /** Live split of the pot, recomputed on every card sold. */
+  prizePool: PrizeBreakdown;
   seedHash: string;
   awardedTiers: BingoClaimTier[];
   /** Server-authoritative event currently affecting the entire room. */
   activeEvent: ActiveBingoEvent | null;
   /** Most recent room events, newest first, useful for reconnects and the thesis HUD. */
   eventHistory: ActiveBingoEvent[];
+  /** Who is sitting where. Authoritative: the client never decides this. */
+  seating: SeatOccupancy[];
+  /** Seats held open for friends, with the moment each hold lapses. */
+  reservations: Array<{ seatId: string; holderId: string; expiresAt: number }>;
+  /** The seat this player is in, or null while they are standing. */
+  mySeatId: string | null;
+}
+
+/** Seating chart broadcast on its own, without a whole snapshot. */
+export interface BingoSeatingPayload {
+  seating: SeatOccupancy[];
+  reservations: Array<{ seatId: string; holderId: string; expiresAt: number }>;
+}
+
+export interface BingoSeatRejectedPayload {
+  seatId: string;
+  reason: SeatRejectionReason;
 }
 
 export interface BingoBallCalledPayload {
@@ -161,6 +182,10 @@ export const BINGO_CLIENT_MESSAGES = {
   markCell: 'bingo_mark_cell',
   claim: 'bingo_claim',
   ping: 'bingo_ping',
+  takeSeat: 'bingo_take_seat',
+  leaveSeat: 'bingo_leave_seat',
+  reserveSeat: 'bingo_reserve_seat',
+  cancelReservation: 'bingo_cancel_reservation',
 } as const;
 
 export const BINGO_SERVER_MESSAGES = {
@@ -170,6 +195,9 @@ export const BINGO_SERVER_MESSAGES = {
   claimRejected: 'bingo_claim_rejected',
   actionRejected: 'bingo_action_rejected',
   pong: 'bingo_pong',
+  /** Full seating chart, sent whenever anyone sits, stands or is timed out. */
+  seating: 'bingo_seating',
+  seatRejected: 'bingo_seat_rejected',
 } as const;
 
 const requestIdSchema = z.string().trim().min(8).max(80);
@@ -214,6 +242,13 @@ export const bingoClaimSchema = z
   .strict();
 
 export const bingoEmptySchema = z.object({}).strict();
+
+/** Seat id plus where the player claims to be standing. Both are checked. */
+export const bingoSeatSchema = z
+  .object({
+    seatId: z.string().trim().min(2).max(16),
+  })
+  .strict();
 export const bingoPingSchema = z.object({ clientTime: z.number() }).strict();
 
 export function normaliseBingoRoomCode(value: unknown): string {

@@ -6,11 +6,16 @@ export * from './errors';
 export * from './chat';
 export * from './world';
 export * from './avatarMotion';
+export * from './bingoSeating';
+export * from './seatRegistry';
+export * from './prizePool';
+export * from './sestina';
 export * from './protocol';
 
 export * from './avatar';
 export * from './bingo';
 export * from './bingoEvents';
 export * from './slots';
+export * from './slotMechanics';
 export * from './slotPresets';
 export * from './slotProtocol';

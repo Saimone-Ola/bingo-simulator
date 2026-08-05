@@ -581,6 +581,8 @@ export default function BingoPage() {
               quantity={quantity}
               mode={mode}
               alreadyBought={(me?.cardCount ?? 0) > 0}
+              pool={snapshot.prizePool}
+              myCards={me?.cardCount ?? 0}
               onQuantity={setQuantity}
               onMode={setMode}
               onConfirm={confirmPurchase}

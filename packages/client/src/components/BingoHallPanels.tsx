@@ -3,8 +3,10 @@ import type {
   BingoPlayerSummary,
   BingoRoomTier,
   BingoStartMode,
+  PrizeBreakdown,
   RoomBingoConfig,
 } from '@bingo/shared';
+import PrizePoolPanel from './PrizePoolPanel';
 import {
   QUALITY_PRESETS,
   useHallSettings,
@@ -59,6 +61,8 @@ export function PurchasePanel({
   quantity,
   mode,
   alreadyBought,
+  pool,
+  myCards,
   onQuantity,
   onMode,
   onConfirm,
@@ -69,6 +73,9 @@ export function PurchasePanel({
   quantity: number;
   mode: BingoMarkingMode;
   alreadyBought: boolean;
+  /** Live pool from the server; the panel never computes one of its own. */
+  pool: PrizeBreakdown;
+  myCards: number;
   onQuantity: (quantity: number) => void;
   onMode: (mode: BingoMarkingMode) => void;
   onConfirm: () => void;
@@ -85,6 +92,7 @@ export function PurchasePanel({
       onClose={onClose}
     >
       <div className="grid gap-4">
+        <PrizePoolPanel pool={pool} myCards={myCards} />
         <div className="grid grid-cols-2 gap-2">
           {(['MANUAL', 'AUTOMATIC'] as const).map((option) => (
             <button

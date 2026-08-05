@@ -6,7 +6,10 @@ import {
   BingoEventDirector,
   bingoClaimSchema,
   bingoConfigSchema,
+  DEFAULT_PRIZE_POOL_CONFIG,
+  SeatRegistry,
   bingoEmptySchema,
+  bingoSeatSchema,
   bingoMarkSchema,
   bingoPingSchema,
   bingoPurchaseSchema,
@@ -22,7 +25,13 @@ import {
   type BingoMarkingMode,
   type BingoPlayerSummary,
   type BingoPongPayload,
+  type PrizeBreakdown,
+  type PrizePoolConfig,
+  type SeatRejectionReason,
   type BingoRoomTier,
+  computePrizePool,
+  type BingoSeatRejectedPayload,
+  type BingoSeatingPayload,
   type BingoSnapshotPayload,
   type BingoWinnerPayload,
   type ItalianBingoCard,
@@ -97,6 +106,14 @@ interface BingoParticipant {
 export class BingoRoom extends Room {
   override maxClients = 20;
 
+  /**
+   * Who is sitting where.
+   *
+   * Authoritative and synchronous: a claim resolves without an await, so two
+   * clients racing for the same chair cannot both win it.
+   */
+  private readonly seats = new SeatRegistry();
+
   private roomCode = 'TESI-2026';
   private readonly displayRoomName = 'Sala Tesi — Bingo Italiano';
   private readonly phases = new LobbyStateMachine();
@@ -118,6 +135,9 @@ export class BingoRoom extends Room {
   private phaseEndsAt: number | null = null;
   private potCredits = 0;
   private paidCredits = 0;
+  /** Cards sold this round, which is what the pool is computed from. */
+  private cardsSold = 0;
+  private prizeConfig: PrizePoolConfig = { ...DEFAULT_PRIZE_POOL_CONFIG };
   private readonly awardedTiers = new Set<BingoClaimTier>();
 
   private config: RoomBingoConfig = {
@@ -183,6 +203,45 @@ export class BingoRoom extends Room {
       const parsed = bingoClaimSchema.safeParse(payload);
       if (!parsed.success) return this.reject(client, 'claim', 'invalid_payload');
       void this.handleClaim(client, parsed.data);
+    });
+
+    this.onMessage(BINGO_CLIENT_MESSAGES.takeSeat, (client, payload: unknown) => {
+      const parsed = bingoSeatSchema.safeParse(payload);
+      if (!parsed.success) return;
+      this.takeSeat(client, parsed.data.seatId);
+    });
+
+    this.onMessage(BINGO_CLIENT_MESSAGES.leaveSeat, (client) => {
+      const participant = this.participants.get(client.sessionId);
+      if (!participant) return;
+      if (this.seats.release(participant.userId) === null) {
+        this.rejectSeat(client, '', 'not_seated');
+        return;
+      }
+      this.broadcastSeating();
+    });
+
+    this.onMessage(BINGO_CLIENT_MESSAGES.reserveSeat, (client, payload: unknown) => {
+      const parsed = bingoSeatSchema.safeParse(payload);
+      if (!parsed.success) return;
+      const participant = this.participants.get(client.sessionId);
+      if (!participant) return;
+      const result = this.seats.reserve(parsed.data.seatId, participant.userId, Date.now());
+      if (!result.ok) {
+        this.rejectSeat(client, parsed.data.seatId, result.reason);
+        return;
+      }
+      this.broadcastSeating();
+    });
+
+    this.onMessage(BINGO_CLIENT_MESSAGES.cancelReservation, (client, payload: unknown) => {
+      const parsed = bingoSeatSchema.safeParse(payload);
+      if (!parsed.success) return;
+      const participant = this.participants.get(client.sessionId);
+      if (!participant) return;
+      if (this.seats.cancelReservation(parsed.data.seatId, participant.userId)) {
+        this.broadcastSeating();
+      }
     });
 
     this.onMessage(BINGO_CLIENT_MESSAGES.ping, (client, payload: unknown) => {
@@ -284,6 +343,9 @@ export class BingoRoom extends Room {
     if (!participant) return;
     participant.connected = true;
     participant.loading = false;
+    // Fill the room out with the NPCs before anyone looks at it, so a player
+    // arriving never sees a hall that populates itself a beat later.
+    this.seatNpcs();
     this.sendAllSnapshots();
   }
 
@@ -294,6 +356,11 @@ export class BingoRoom extends Room {
     if (this.byUser.get(participant.userId) === client.sessionId) {
       this.byUser.delete(participant.userId);
     }
+    // The chair is held, not freed: a player who drops mid-game comes back to
+    // the same seat with the same cards. It lapses on its own.
+    this.seats.hold(participant.userId, Date.now());
+    this.seats.cancelAllReservations(participant.userId);
+    this.broadcastSeating();
     if (client.sessionId === this.hostSessionId) this.reassignHost();
     if (this.phases.phase === 'COUNTDOWN') this.cancelCountdown();
     this.sendAllSnapshots();
@@ -356,11 +423,88 @@ export class BingoRoom extends Room {
       currentNumber: this.currentNumber,
       nextDrawAt: this.nextDrawAt,
       potCredits: this.potCredits,
+      prizePool: this.prizeBreakdown(),
       seedHash: createHash('sha256').update(this.seed).digest('hex').slice(0, 12),
       awardedTiers: [...this.awardedTiers],
       activeEvent: this.activeEvent ? { ...this.activeEvent } : null,
       eventHistory: this.eventHistory.map((event) => ({ ...event })),
+      seating: this.seats.snapshot(),
+      reservations: this.seats.reservationSnapshot(),
+      mySeatId: this.seats.seatFor(participant.userId),
     };
+  }
+
+  /**
+   * Seats a player.
+   *
+   * The reach check is deliberately absent: the client cannot be trusted about
+   * where it is standing, and the hall is small enough that any seat in it is a
+   * legitimate target from the overlay map. What is enforced is the part that
+   * matters — one occupant per seat, one seat per occupant.
+   */
+  private takeSeat(client: Client, seatId: string): void {
+    const participant = this.participants.get(client.sessionId);
+    if (!participant) return;
+
+    const result = this.seats.claim(
+      seatId,
+      participant.userId,
+      participant.displayName,
+      'PLAYER',
+      Date.now(),
+    );
+
+    if (!result.ok) {
+      this.rejectSeat(client, seatId, result.reason);
+      return;
+    }
+    this.broadcastSeating();
+  }
+
+  /**
+   * The pool as it stands, recomputed rather than accumulated.
+   *
+   * Derived from cards sold and the room's configuration every time it is
+   * asked for, so it cannot drift from the sales it is supposed to reflect —
+   * and it stays correct while players come and go mid-purchase.
+   */
+  private prizeBreakdown(): PrizeBreakdown {
+    return computePrizePool(this.cardsSold, {
+      ...this.prizeConfig,
+      cardPriceCredits: this.config.cardPrice,
+    });
+  }
+
+  private rejectSeat(client: Client, seatId: string, reason: SeatRejectionReason): void {
+    const payload: BingoSeatRejectedPayload = { seatId, reason };
+    client.send(BINGO_SERVER_MESSAGES.seatRejected, payload);
+  }
+
+  /**
+   * Sends the seating chart to everyone.
+   *
+   * Its own message rather than a full snapshot: a snapshot carries every
+   * player's private cards and is far larger, and seats change on every arrival.
+   */
+  private broadcastSeating(): void {
+    const payload: BingoSeatingPayload = {
+      seating: this.seats.snapshot(),
+      reservations: this.seats.reservationSnapshot(),
+    };
+    this.broadcast(BINGO_SERVER_MESSAGES.seating, payload);
+  }
+
+  /** Puts the NPCs in chairs, so the hall looks occupied rather than staged. */
+  private seatNpcs(): void {
+    const now = Date.now();
+    for (const npc of this.summaries().filter((player) => player.isNpc)) {
+      if (this.seats.seatFor(npc.userId)) continue;
+      const free = this.seats.freeSeats(now);
+      // NPCs take the back tables first, leaving the good seats for players.
+      const target = free[free.length - 1];
+      if (!target) return;
+      this.seats.claim(target, npc.userId, npc.displayName, 'NPC', now);
+    }
   }
 
   private sendSnapshot(client: Client): void {
@@ -400,7 +544,10 @@ export class BingoRoom extends Room {
       participant.markingMode = request.markingMode;
       participant.cards = this.issueCards(participant, request.quantity, request.requestId);
       participant.ready = false;
-      if (!entry.replayed) this.potCredits += total;
+      if (!entry.replayed) {
+        this.potCredits += total;
+        this.cardsSold += request.quantity;
+      }
     } catch (error) {
       if (isAppError(error) && error.code === 'insufficient_funds') {
         this.reject(client, 'purchaseCards', 'insufficient_credits');
@@ -645,8 +792,11 @@ export class BingoRoom extends Room {
   }
 
   private async awardPrize(participant: BingoParticipant, tier: BingoClaimTier): Promise<number> {
-    const remaining = Math.max(0, this.potCredits - this.paidCredits);
-    const prize = tier === 'CINQUINA' ? Math.max(1, Math.floor(this.potCredits * 0.25)) : remaining;
+    // Paid from the published breakdown, not from a second formula: the figure
+    // on the panel and the figure paid out are the same computation.
+    const breakdown = this.prizeBreakdown();
+    const remaining = Math.max(0, breakdown.distributedCredits - this.paidCredits);
+    const prize = Math.min(remaining, breakdown.perTier[tier]);
     if (prize <= 0) return 0;
     try {
       const entry = await postLedgerEntryAtomic({
@@ -690,6 +840,7 @@ export class BingoRoom extends Room {
     this.nextDrawAt = null;
     this.phaseEndsAt = null;
     this.potCredits = 0;
+    this.cardsSold = 0;
     this.paidCredits = 0;
     this.awardedTiers.clear();
     this.issuedSignatures.clear();
