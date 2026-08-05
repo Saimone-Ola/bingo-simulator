@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { bodyProportions, headGroupY, neckScale } from './bodyProportions';
 import {
   resolveAvatarAppearance,
   type AvatarAppearance,
@@ -29,7 +30,9 @@ export const CHARACTER_ANIMATION_STATES = [
   'TALK',
   'LISTEN',
   'LAUGH',
+  'WAVE',
   'APPLAUD',
+  'DANCE',
   'CELEBRATE',
   'DISAPPOINTED',
   'SCARED',
@@ -88,20 +91,6 @@ interface MotionTargets {
   browLift: number;
   blink: number;
 }
-
-const BODY_WIDTH: Record<ResolvedAvatarAppearance['bodyType'], number> = {
-  neutral: 1,
-  slim: 0.87,
-  athletic: 1.11,
-  curvy: 1.08,
-};
-
-const SHOULDER_WIDTH: Record<ResolvedAvatarAppearance['bodyType'], number> = {
-  neutral: 1,
-  slim: 0.92,
-  athletic: 1.14,
-  curvy: 1.02,
-};
 
 const PERSONALITY_SPEED: Record<CharacterPersonality, number> = {
   CALM: 0.74,
@@ -223,15 +212,62 @@ function motionForState(
       next.browLift = 0.6;
       next.blink = 0.25;
       break;
+    case 'WAVE':
+      // One arm up, hand sweeping side to side. The other stays down: a wave
+      // with both arms is someone signalling an aircraft, not saying hello.
+      // Nearly straight up and held clear of the head: at a shallower angle the
+      // upper arm swings across the face instead of beside it.
+      next.rightArmX = -2.46;
+      next.rightArmZ = 0.5 + wave * 0.26;
+      next.rightElbowX = -0.34;
+      next.leftArmX = 0.06;
+      next.leftElbowX = -0.28;
+      next.headZ = 0.07;
+      next.headY = wave * 0.12;
+      next.torsoZ = wave * 0.03;
+      next.mouth = 0.5;
+      next.browLift = 0.34;
+      break;
     case 'APPLAUD':
-      next.leftArmX = -1.35;
-      next.rightArmX = -1.35;
-      next.leftArmZ = 0.5 + beat * 0.16;
-      next.rightArmZ = -0.5 - beat * 0.16;
-      next.leftElbowX = -1.5;
-      next.rightElbowX = -1.5;
+      // Hands have to *meet*. The previous version drove both arms outward on
+      // the same beat, so they swung apart in sync and never touched — which
+      // is why applauding did not read as applauding. `Math.abs` brings them
+      // together at the middle of the cycle, which is the clap.
+      // Chest height, not head height: a horizontal upper arm plus a fully bent
+      // elbow puts the hands up by the face, which reads as blocking a punch.
+      next.leftArmX = -0.95;
+      next.rightArmX = -0.95;
+      next.leftArmZ = 0.14 + Math.abs(beat) * 0.2;
+      next.rightArmZ = -0.14 - Math.abs(beat) * 0.2;
+      next.leftElbowX = -1.05;
+      next.rightElbowX = -1.05;
+      next.torsoX = -0.04;
+      next.headX = -0.05;
       next.mouth = 0.55;
       next.browLift = 0.45;
+      break;
+    case 'DANCE':
+      // Weight shifting side to side, arms up and swinging in opposition,
+      // knees soft. Distinct from CELEBRATE, which is a jump with both arms
+      // straight up and stays put.
+      next.rootY = Math.abs(beat) * 0.045;
+      next.torsoZ = wave * 0.17;
+      next.torsoX = -0.06;
+      next.leftArmX = -1.5 + wave * 0.5;
+      next.rightArmX = -1.5 - wave * 0.5;
+      // Held wide, or the raised arm sweeps across the face on every beat.
+      next.leftArmZ = -0.62;
+      next.rightArmZ = 0.62;
+      next.leftElbowX = -0.8;
+      next.rightElbowX = -0.8;
+      next.leftLegX = wave * 0.22;
+      next.rightLegX = -wave * 0.22;
+      next.leftKneeX = Math.max(0, -wave) * 0.34;
+      next.rightKneeX = Math.max(0, wave) * 0.34;
+      next.headZ = wave * 0.15;
+      next.headY = wave * 0.22;
+      next.mouth = 0.6;
+      next.browLift = 0.4;
       break;
     case 'CELEBRATE':
       next.rootY = Math.max(0, beat) * 0.055;
@@ -671,10 +707,17 @@ export default function ProceduralCharacter({
   const blinkTimer = useRef(0);
 
   const baseY = position[1];
-  const bodyWidth = BODY_WIDTH[resolved.bodyType];
-  const shoulderWidth = SHOULDER_WIDTH[resolved.bodyType];
-  const heightScale = THREE.MathUtils.clamp(resolved.heightCm / 175, 0.84, 1.16);
-  const finalScale = scale * heightScale;
+  // Height is not a uniform scale: breadth lags behind it and the head lags
+  // further still, which is what separates a short person from a shrunk one.
+  const proportions = bodyProportions(resolved.heightCm, resolved.bodyType);
+  const bodyWidth = proportions.widths.chest;
+  const shoulderWidth = proportions.widths.shoulders;
+  const hipWidth = proportions.widths.hips;
+  const rootScale: Vector3Tuple = [
+    scale * proportions.horizontal,
+    scale * proportions.vertical,
+    scale * proportions.horizontal,
+  ];
   const motionSpeed = PERSONALITY_SPEED[personality];
 
   const skinMaterial = useMemo(
@@ -767,10 +810,10 @@ export default function ProceduralCharacter({
   });
 
   return (
-    <group ref={root} position={position} rotation={[0, rotationY, 0]} scale={finalScale}>
+    <group ref={root} position={position} rotation={[0, rotationY, 0]} scale={rootScale}>
       <group ref={torso}>
-        {/* Hips */}
-        <mesh position={[0, 0.77, 0]} scale={[bodyWidth, 1, 0.94]} castShadow>
+        {/* Hips. Their width is what makes a curvy build read as one. */}
+        <mesh position={[0, 0.77, 0]} scale={[hipWidth, 1, 0.94 * hipWidth]} castShadow>
           <capsuleGeometry args={[0.2, 0.2, 7, 14]} />
           <meshStandardMaterial color={resolved.pantsColor} roughness={0.84} />
         </mesh>
@@ -789,7 +832,7 @@ export default function ProceduralCharacter({
           <sphereGeometry args={[0.3, 14, 10]} />
           <meshStandardMaterial color={resolved.shirtColor} roughness={0.76} />
         </mesh>
-        <mesh position={[0, 1.55, 0]} castShadow>
+        <mesh position={[0, 1.52, 0]} scale={[1, neckScale(proportions.headRelative), 1]} castShadow>
           <cylinderGeometry args={[0.088, 0.105, 0.17, 14]} />
           <primitive object={skinMaterial} attach="material" />
         </mesh>
@@ -798,7 +841,7 @@ export default function ProceduralCharacter({
         <Arm side={1} appearance={resolved} armRef={rightArm} elbowRef={rightElbow} shoulderWidth={shoulderWidth} />
 
         {([-1, 1] as const).map((side) => (
-          <group key={side} ref={side === -1 ? leftLeg : rightLeg} position={[side * 0.15 * bodyWidth, 0.7, 0]}>
+          <group key={side} ref={side === -1 ? leftLeg : rightLeg} position={[side * 0.15 * hipWidth, 0.7, 0]}>
             <mesh position={[0, -0.21, 0]} castShadow>
               <capsuleGeometry args={[0.093, 0.28, 6, 12]} />
               <meshStandardMaterial color={resolved.pantsColor} roughness={0.84} />
@@ -826,7 +869,11 @@ export default function ProceduralCharacter({
           </group>
         ))}
 
-        <group ref={head} position={[0, 1.85, 0]}>
+        <group
+          ref={head}
+          position={[0, headGroupY(proportions.headRelative), 0]}
+          scale={proportions.headRelative}
+        >
           {/* Slightly egg shaped skull: wider at the temples, narrower at the jaw */}
           <mesh scale={[0.9, 1.02, 0.92]} castShadow>
             <sphereGeometry args={[0.228, 22, 16]} />

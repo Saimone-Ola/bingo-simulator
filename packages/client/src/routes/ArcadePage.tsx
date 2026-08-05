@@ -6,7 +6,7 @@ import type {
   SlotSpinResponse,
 } from '@bingo/shared';
 import { ApiError, api } from '../lib/api';
-import { ResponsiblePlayNotice } from '../components/ui';
+import { Button, ResponsiblePlayNotice } from '../components/ui';
 import TouchJoystick from '../components/TouchJoystick';
 import { disposeHallAudio, playHallSfx } from '../audio/hallAudio';
 import { useHallSettings } from '../store/hallSettings';
@@ -195,12 +195,34 @@ export default function ArcadePage() {
         </div>
       )}
 
-      {!openMachine && nearCabinet && !sceneFailed && (
+      {!openMachine && nearCabinet && nearName && !sceneFailed && (
         <div className="pointer-events-none absolute bottom-28 left-1/2 z-20 -translate-x-1/2 rounded-lg border border-surface-500 bg-surface-900/85 px-4 py-2 text-center text-sm font-semibold backdrop-blur">
           <kbd className="mr-2 rounded border border-surface-400 bg-surface-800 px-2 py-0.5 font-mono text-xs">
             E
           </kbd>
-          {nearName ? `per giocare a ${nearName}` : 'cabinato fuori servizio'}
+          per giocare a {nearName}
+        </div>
+      )}
+
+      {/* An empty room needs to say why it is empty and what to do about it,
+          or it just looks broken. */}
+      {!loadError && machines.length === 0 && (
+        <div className="absolute inset-0 z-20 grid place-items-center p-4">
+          <div className="max-w-sm rounded-xl border border-surface-600 bg-surface-900/90 p-5 text-center backdrop-blur">
+            <p className="font-display text-lg font-black">La sala è vuota</p>
+            <p className="mt-1.5 text-sm text-content-secondary">
+              Non c’è ancora nessuna slot pubblicata. Le macchine di questa sala le
+              progettano i giocatori.
+            </p>
+            <Button
+              variant="primary"
+              size="sm"
+              className="mt-4"
+              onClick={() => navigate('/arcade/editor')}
+            >
+              Creane una
+            </Button>
+          </div>
         </div>
       )}
 

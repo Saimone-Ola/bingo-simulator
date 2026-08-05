@@ -98,11 +98,23 @@ export function distanceTo(x: number, z: number, targetX: number, targetZ: numbe
   return Math.hypot(x - targetX, z - targetZ);
 }
 
-/** Cabinet the player is standing in front of, or `null`. */
-export function nearestCabinet(x: number, z: number): CabinetPlacement | null {
+/**
+ * Cabinet the player is standing in front of, or `null`.
+ *
+ * `machineCount` is how many cabinets actually have a machine in them. Empty
+ * pitches are skipped rather than reported and then refused: offering "premi E"
+ * on something that answers "fuori servizio" is a dead end, and on a fresh
+ * database every cabinet was one.
+ */
+export function nearestCabinet(
+  x: number,
+  z: number,
+  machineCount: number = CABINETS.length,
+): CabinetPlacement | null {
   let best: CabinetPlacement | null = null;
   let bestDistance = CABINET_REACH;
   for (const cabinet of CABINETS) {
+    if (cabinet.index >= machineCount) continue;
     const distance = distanceTo(x, z, cabinet.standX, cabinet.standZ);
     if (distance <= bestDistance) {
       best = cabinet;
@@ -110,4 +122,9 @@ export function nearestCabinet(x: number, z: number): CabinetPlacement | null {
     }
   }
   return best;
+}
+
+/** Cabinets with a machine standing in them, which are the ones to draw. */
+export function occupiedCabinets(machineCount: number): readonly CabinetPlacement[] {
+  return CABINETS.slice(0, Math.max(0, Math.min(machineCount, CABINETS.length)));
 }
