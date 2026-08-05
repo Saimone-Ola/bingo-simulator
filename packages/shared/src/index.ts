@@ -5,6 +5,7 @@ export * from './auth';
 export * from './errors';
 export * from './chat';
 export * from './world';
+export * from './avatarMotion';
 export * from './protocol';
 
 export * from './avatar';

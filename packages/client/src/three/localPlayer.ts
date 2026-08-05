@@ -12,6 +12,14 @@
 export const localPlayer = {
   x: 0,
   z: 0,
+  /**
+   * Predicted velocity, integrated by the same `stepAvatarMotion` the server
+   * runs. Keeping it here rather than inside the controller means a
+   * reconciliation can correct the position without silently leaving a stale
+   * velocity behind to push the avatar straight back off it.
+   */
+  vx: 0,
+  vz: 0,
   rotY: 0,
   moving: false,
   running: false,
@@ -37,6 +45,8 @@ export const RECONCILE_RATE = 6;
 export function seedLocalPlayer(x: number, z: number, rotY: number): void {
   localPlayer.x = x;
   localPlayer.z = z;
+  localPlayer.vx = 0;
+  localPlayer.vz = 0;
   localPlayer.rotY = rotY;
   localPlayer.initialised = true;
 }

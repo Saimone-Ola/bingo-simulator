@@ -10,6 +10,7 @@ import {
 } from '@bingo/shared';
 import { getRoom, type RemotePlayer } from '../net/hubConnection';
 import { useHubStore } from '../store/hub';
+import { damp, dampAngle } from './damping';
 import { localPlayer } from './localPlayer';
 import { labelAnchors, writeLabelAnchor, type LabelAnchor } from './labels';
 import ProceduralCharacter, {
@@ -110,17 +111,6 @@ function animationFor(remote: RemotePlayer, isSelf: boolean): CharacterAnimation
   if (running && moving) return 'RUN';
   if (moving) return 'WALK';
   return 'IDLE';
-}
-
-function damp(current: number, target: number, lambda: number, dt: number): number {
-  return current + (target - current) * (1 - Math.exp(-lambda * dt));
-}
-
-function dampAngle(current: number, target: number, lambda: number, dt: number): number {
-  let delta = target - current;
-  while (delta > Math.PI) delta -= Math.PI * 2;
-  while (delta < -Math.PI) delta += Math.PI * 2;
-  return current + delta * (1 - Math.exp(-lambda * dt));
 }
 
 function HubCharacter({
