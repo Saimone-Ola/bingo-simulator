@@ -9,19 +9,30 @@ in denaro reale, nessun riferimento a marchi di casinò esistenti.
 
 ---
 
-## Stato: Fase 0 completata
+## Stato
 
 | Fase | Contenuto | Stato |
 |---|---|---|
-| 0 | Monorepo, TypeScript, Neon + migrazioni, auth, ledger, deploy | ✅ fatto |
+| 0 | Monorepo, TypeScript, PostgreSQL + migrazioni, auth, ledger, deploy | ✅ fatto |
 | 1 | Hub 3D, avatar, movimento multiplayer Colyseus, chat | ✅ fatto |
-| 2 | Sala bingo funzionante end-to-end | ⬜ |
-| 3 | Sale create dagli utenti, regole, codice privato, inviti | ⬜ |
-| 4 | Slot giocabili + editor con calcolo RTP | ⬜ |
-| 5 | Editor visivo sala, pattern personalizzati, sale slot | ⬜ |
+| 2 | Sala bingo funzionante end-to-end | ✅ fatto |
+| 3 | Sale create dagli utenti, regole, codice privato, inviti | 🟡 ingresso per codice, creazione no |
+| 4 | Slot giocabili + editor con calcolo RTP | ✅ fatto |
+| 5 | Editor visivo sala, pattern personalizzati, sale slot | 🟡 sala slot fatta, editor sala no |
 | 6 | Price game, eventi a orario, jackpot | ⬜ |
 | 7 | Negozio, inventario, guardaroba, progressione | ⬜ |
 | 8 | Moderazione, anti-cheat, ottimizzazione, analytics, i18n | ⬜ |
+
+### Percorsi dell'applicazione
+
+| Rotta | Cosa c'è |
+|---|---|
+| `/hub` | Piazza 3D: movimento, chat, emote, punti di interesse |
+| `/bingo` | Sala Bingo italiana a 90 numeri, in prima persona |
+| `/arcade` | Sala slot 3D: cabinati giocabili, `E` per sedersi a una macchina |
+| `/arcade/editor` | Editor delle slot: nastri, tabella paga, linee, RTP calcolato e misurato |
+| `/tesi` | Modalità discussione, con le verifiche eseguite dal vivo |
+| `/stile` | Guida di stile del design system |
 
 ---
 
@@ -31,13 +42,16 @@ in denaro reale, nessun riferimento a marchi di casinò esistenti.
 bingo-simulator/          <- radice del repository
 ├── packages/
 │   ├── shared/     contratti condivisi: schemi Zod, costanti, protocollo Colyseus
-│   ├── server/     API Fastify, Drizzle + PostgreSQL, auth, ledger  (+ Colyseus da fase 1)
+│   ├── server/     API Express, Colyseus, Drizzle + PostgreSQL, auth, ledger, motore slot
 │   └── client/     React + Vite + React Three Fiber, Tailwind, Zustand
 ├── scripts/        utility (generazione segreti)
 ├── Dockerfile      immagine del server di gioco
 ├── render.yaml     blueprint Render (servizio + database)
 ├── DEPLOY.md       messa online, passo per passo
 ├── DESIGN.md       design system: token, componenti, regole
+├── docs/
+│   ├── THESIS_VERTICAL_SLICE.md   cosa è implementato e verificato, e cosa no
+│   └── DEMO.md                    script della dimostrazione e domande attese
 ├── pnpm-workspace.yaml
 └── vercel.json     deploy del solo client
 ```
@@ -223,6 +237,38 @@ l'affermazione di un fatto.
 `server_seed_hash` (pubblicato prima) e `server_seed` (pubblicato dopo), così
 chiunque può rigiocare la sequenza e verificarla.
 
+### Slot: motore, verificabilità, pubblicazione
+
+Il motore (`shared/src/slots.ts`) è puro: date una configurazione, un seed e un
+nonce restituisce sempre la stessa griglia. Da qui discende tutto il resto.
+
+**Verificabilità.** Il seed di ogni giro è `HMAC(segreto, machineId:nonce)`. Il
+server pubblica l'hash del seed *prima* che il giro avvenga e rivela il seed
+*dopo*: chiunque può rieseguire `spinSlot` e ottenere la stessa griglia. La
+pagina `/tesi` fa esattamente questa verifica dal vivo.
+
+**Il nonce non si può riusare.** È prenotato con un `UPDATE ... RETURNING`
+atomico sul contatore della macchina, e c'è un indice unico su
+`(machine_id, nonce)`: anche se il livello applicativo sbagliasse, il database
+rifiuta il doppione. Senza questo la promessa di verificabilità sarebbe vuota.
+
+**Due RTP diversi, non due stime dello stesso.** `analyticLineRtp` è una somma
+in forma chiusa sul solo gioco base: esatta, istantanea, e un limite inferiore
+stretto perché ignora scatter e giri gratuiti. L'RTP misurato è un Monte Carlo
+che li include: sui preset calibrati le funzioni valgono fra un quinto e un
+terzo del ritorno totale. La pubblicazione è vincolata alla **misura**, non alla
+formula, proprio perché la formula non può vedere le funzioni.
+
+**La finestra 85–98% è imposta in tre punti indipendenti**: le costanti in
+`shared/src/constants.ts`, il controllo in `publishSlotMachine`, e un vincolo
+`CHECK` nel database (`slot_machines_published_rtp_window`) che rifiuta la riga
+a prescindere dal codice che l'ha scritta.
+
+**La puntata esce prima che i rulli siano letti**, e sia l'addebito sia
+l'eventuale vincita passano dal ledger con chiave di idempotenza
+`slot:<macchina>:<utente>:<richiesta>:bet|win`. Nessun credito si muove senza
+una scrittura contabile.
+
 ### Ledger immutabile
 
 I crediti non si aggiornano mai con un `UPDATE` del saldo. Ogni movimento è una
@@ -267,7 +313,7 @@ privata sempre con codice, macchina slot pubblicabile solo con RTP fra 0,85 e
 
 ---
 
-## API (fase 0)
+## API
 
 | Metodo | Rotta | Note |
 |---|---|---|
@@ -279,6 +325,21 @@ privata sempre con codice, macchina slot pubblicabile solo con RTP fra 0,85 e
 | `GET` | `/api/auth/me` | |
 | `GET` | `/api/wallet/balance` | sola lettura |
 | `GET` | `/api/wallet/statement` | estratto conto |
+
+Slot (tutte sotto sessione autenticata):
+
+| Metodo | Rotta | Note |
+|---|---|---|
+| `GET` | `/api/slots` | elenco, filtrabile su `mine` e volatilità |
+| `POST` | `/api/slots` | crea una bozza |
+| `PATCH` | `/api/slots/:id` | aggiorna la propria bozza |
+| `POST` | `/api/slots/simulate` | Monte Carlo su una configurazione **non salvata**, per l'editor |
+| `POST` | `/api/slots/:id/publish` | rilancia la simulazione su 1 000 000 di giri e pubblica o rifiuta |
+| `GET` | `/api/slots/:id/commit` | hash dei seed dei prossimi giri, pubblicati prima che avvengano |
+| `POST` | `/api/slots/:id/spin` | gioca un giro; `requestId` rende la richiesta idempotente |
+
+Il client manda configurazioni e puntate. Non manda griglie, seed, vincite o
+RTP, e non esiste una rotta che li accetterebbe.
 
 Non esiste, e non esisterà, una rotta che scrive un saldo: i crediti si muovono
 solo come effetto di un'azione di gioco risolta dal server.
