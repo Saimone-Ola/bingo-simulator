@@ -10,6 +10,8 @@
  * A yaw of 0 looks at the stage, i.e. forward = (-sin(yaw), -cos(yaw)).
  */
 
+import { HALL_SEATS, HALL_TABLES, SEAT_RING_RADIUS } from '@bingo/shared';
+
 export interface CircleCollider {
   readonly kind: 'circle';
   readonly x: number;
@@ -62,7 +64,8 @@ export interface SeatPlacement {
 
 export const PLAYER_RADIUS = 0.32;
 export const TABLE_RADIUS = 1.3;
-export const SEAT_RING_RADIUS = 1.78;
+// Re-exported from shared so existing importers keep working.
+export { SEAT_RING_RADIUS };
 export const TABLE_TOP_HEIGHT = 0.78;
 export const STANDING_EYE_HEIGHT = 1.62;
 export const SEATED_EYE_HEIGHT = 1.26;
@@ -119,54 +122,25 @@ export const ENTRANCE = {
 /** Where a player is dropped the first time they enter the hall. */
 export const SPAWN = { x: 0.2, z: 8.5, yaw: -0.42 } as const;
 
-const TABLE_COLUMNS = [-6.4, 0, 6.4] as const;
-const TABLE_ROWS = [-4.9, 0.3, 5.4] as const;
+/**
+ * Tables and seats come from `@bingo/shared`.
+ *
+ * They used to be built here, which made sitting down something the client
+ * decided about itself while the server had no idea seats existed. The layout
+ * is now one definition read by the renderer, the collision code and the room
+ * that owns occupancy, so a chair cannot be drawn where the server will not
+ * seat anyone.
+ */
+export const TABLES: readonly TablePlacement[] = HALL_TABLES.map((table) => ({
+  index: table.index,
+  x: table.x,
+  z: table.z,
+  radius: TABLE_RADIUS,
+  seatCount: table.seatCount,
+  label: table.label,
+}));
 
-function buildTables(): readonly TablePlacement[] {
-  const tables: TablePlacement[] = [];
-  for (const z of TABLE_ROWS) {
-    for (const x of TABLE_COLUMNS) {
-      tables.push({
-        index: tables.length,
-        x,
-        z,
-        radius: TABLE_RADIUS,
-        // The centre aisle gets the large six-seater tables; they read as the
-        // "good" tables from the entrance and give the hall a focal column.
-        seatCount: x === 0 ? 6 : 4,
-        label: tables.length + 1,
-      });
-    }
-  }
-  return tables;
-}
-
-export const TABLES: readonly TablePlacement[] = buildTables();
-
-function buildSeats(): readonly SeatPlacement[] {
-  const seats: SeatPlacement[] = [];
-  for (const table of TABLES) {
-    for (let seatIndex = 0; seatIndex < table.seatCount; seatIndex += 1) {
-      // Seat 0 sits on the entrance side of the table, so its occupant looks
-      // towards the stage: the best view goes to whoever arrives first.
-      const angle = Math.PI / 2 + (seatIndex * (Math.PI * 2)) / table.seatCount;
-      const x = table.x + Math.cos(angle) * SEAT_RING_RADIUS;
-      const z = table.z + Math.sin(angle) * SEAT_RING_RADIUS;
-      seats.push({
-        id: `t${table.index}s${seatIndex}`,
-        tableIndex: table.index,
-        seatIndex,
-        angle,
-        x,
-        z,
-        facing: Math.atan2(table.x - x, table.z - z),
-      });
-    }
-  }
-  return seats;
-}
-
-export const SEATS: readonly SeatPlacement[] = buildSeats();
+export const SEATS: readonly SeatPlacement[] = HALL_SEATS;
 
 /**
  * Blocking radius of a table together with its ring of chairs.

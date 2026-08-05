@@ -6,6 +6,8 @@ export * from './errors';
 export * from './chat';
 export * from './world';
 export * from './avatarMotion';
+export * from './bingoSeating';
+export * from './seatRegistry';
 export * from './protocol';
 
 export * from './avatar';
