@@ -6,6 +6,7 @@ import {
   BingoEventDirector,
   bingoClaimSchema,
   bingoConfigSchema,
+  DEFAULT_PRIZE_POOL_CONFIG,
   SeatRegistry,
   bingoEmptySchema,
   bingoSeatSchema,
@@ -24,8 +25,11 @@ import {
   type BingoMarkingMode,
   type BingoPlayerSummary,
   type BingoPongPayload,
+  type PrizeBreakdown,
+  type PrizePoolConfig,
   type SeatRejectionReason,
   type BingoRoomTier,
+  computePrizePool,
   type BingoSeatRejectedPayload,
   type BingoSeatingPayload,
   type BingoSnapshotPayload,
@@ -131,6 +135,9 @@ export class BingoRoom extends Room {
   private phaseEndsAt: number | null = null;
   private potCredits = 0;
   private paidCredits = 0;
+  /** Cards sold this round, which is what the pool is computed from. */
+  private cardsSold = 0;
+  private prizeConfig: PrizePoolConfig = { ...DEFAULT_PRIZE_POOL_CONFIG };
   private readonly awardedTiers = new Set<BingoClaimTier>();
 
   private config: RoomBingoConfig = {
@@ -416,6 +423,7 @@ export class BingoRoom extends Room {
       currentNumber: this.currentNumber,
       nextDrawAt: this.nextDrawAt,
       potCredits: this.potCredits,
+      prizePool: this.prizeBreakdown(),
       seedHash: createHash('sha256').update(this.seed).digest('hex').slice(0, 12),
       awardedTiers: [...this.awardedTiers],
       activeEvent: this.activeEvent ? { ...this.activeEvent } : null,
@@ -451,6 +459,20 @@ export class BingoRoom extends Room {
       return;
     }
     this.broadcastSeating();
+  }
+
+  /**
+   * The pool as it stands, recomputed rather than accumulated.
+   *
+   * Derived from cards sold and the room's configuration every time it is
+   * asked for, so it cannot drift from the sales it is supposed to reflect —
+   * and it stays correct while players come and go mid-purchase.
+   */
+  private prizeBreakdown(): PrizeBreakdown {
+    return computePrizePool(this.cardsSold, {
+      ...this.prizeConfig,
+      cardPriceCredits: this.config.cardPrice,
+    });
   }
 
   private rejectSeat(client: Client, seatId: string, reason: SeatRejectionReason): void {
@@ -522,7 +544,10 @@ export class BingoRoom extends Room {
       participant.markingMode = request.markingMode;
       participant.cards = this.issueCards(participant, request.quantity, request.requestId);
       participant.ready = false;
-      if (!entry.replayed) this.potCredits += total;
+      if (!entry.replayed) {
+        this.potCredits += total;
+        this.cardsSold += request.quantity;
+      }
     } catch (error) {
       if (isAppError(error) && error.code === 'insufficient_funds') {
         this.reject(client, 'purchaseCards', 'insufficient_credits');
@@ -767,8 +792,11 @@ export class BingoRoom extends Room {
   }
 
   private async awardPrize(participant: BingoParticipant, tier: BingoClaimTier): Promise<number> {
-    const remaining = Math.max(0, this.potCredits - this.paidCredits);
-    const prize = tier === 'CINQUINA' ? Math.max(1, Math.floor(this.potCredits * 0.25)) : remaining;
+    // Paid from the published breakdown, not from a second formula: the figure
+    // on the panel and the figure paid out are the same computation.
+    const breakdown = this.prizeBreakdown();
+    const remaining = Math.max(0, breakdown.distributedCredits - this.paidCredits);
+    const prize = Math.min(remaining, breakdown.perTier[tier]);
     if (prize <= 0) return 0;
     try {
       const entry = await postLedgerEntryAtomic({
@@ -812,6 +840,7 @@ export class BingoRoom extends Room {
     this.nextDrawAt = null;
     this.phaseEndsAt = null;
     this.potCredits = 0;
+    this.cardsSold = 0;
     this.paidCredits = 0;
     this.awardedTiers.clear();
     this.issuedSignatures.clear();

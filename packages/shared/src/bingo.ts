@@ -1,6 +1,7 @@
 import type { AvatarAppearance } from './avatar';
 import type { ActiveBingoEvent } from './bingoEvents';
 import type { SeatOccupancy, SeatRejectionReason } from './bingoSeating';
+import type { PrizeBreakdown } from './prizePool';
 
 import { z } from 'zod';
 
@@ -93,6 +94,8 @@ export interface BingoSnapshotPayload {
   currentNumber: number | null;
   nextDrawAt: number | null;
   potCredits: number;
+  /** Live split of the pot, recomputed on every card sold. */
+  prizePool: PrizeBreakdown;
   seedHash: string;
   awardedTiers: BingoClaimTier[];
   /** Server-authoritative event currently affecting the entire room. */
