@@ -12,8 +12,8 @@ import {
   ARCADE_COLLIDERS,
   ARCADE_SHELL,
   ARCADE_SPAWN,
-  CABINETS,
   nearestCabinet,
+  occupiedCabinets,
   type CabinetPlacement,
 } from './arcadeLayout';
 import { RENDER_PROFILES, type HallQuality } from '../../store/hallSettings';
@@ -234,10 +234,12 @@ function ArcadeRoom({ accentLights }: { accentLights: number }) {
 /** Walk, look, and report which cabinet is within reach. */
 function ArcadeController({
   inputEnabled,
+  machineCount,
   onNearCabinet,
   onInteract,
 }: {
   inputEnabled: boolean;
+  machineCount: number;
   onNearCabinet: (cabinet: CabinetPlacement | null) => void;
   onInteract: () => void;
 }) {
@@ -249,6 +251,8 @@ function ArcadeController({
   const pitchTarget = useRef(-0.04);
   const near = useRef<CabinetPlacement | null>(null);
   const enabledRef = useRef(inputEnabled);
+  const countRef = useRef(machineCount);
+  countRef.current = machineCount;
   const nearRef = useRef(onNearCabinet);
   const interactRef = useRef(onInteract);
   enabledRef.current = inputEnabled;
@@ -325,7 +329,7 @@ function ArcadeController({
     camera.position.set(movement.x, EYE_HEIGHT, movement.z);
     camera.rotation.set(pitch.current, yaw.current, 0);
 
-    const cabinet = nearestCabinet(movement.x, movement.z);
+    const cabinet = nearestCabinet(movement.x, movement.z, countRef.current);
     if (cabinet?.index !== near.current?.index) {
       near.current = cabinet;
       nearRef.current(cabinet);
@@ -372,12 +376,15 @@ function Scene(props: ArcadeSceneProps) {
 
       <ArcadeController
         inputEnabled={props.inputEnabled}
+        machineCount={props.machines.length}
         onNearCabinet={props.onNearCabinet}
         onInteract={props.onInteract}
       />
       <ArcadeRoom accentLights={profile.accentLights} />
 
-      {CABINETS.map((cabinet) => (
+      {/* Only the cabinets that have a machine. An empty pitch drawn as a dead
+          box is worse than an empty pitch. */}
+      {occupiedCabinets(props.machines.length).map((cabinet) => (
         <SlotCabinet
           key={cabinet.index}
           cabinet={cabinet}
