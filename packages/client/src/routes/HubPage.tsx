@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { Button, CreditAmount, HudCard } from '../components/ui';
 import { SceneBoundary } from '../components/SceneBoundary';
 import ChatPanel from '../components/ChatPanel';
+import CommandsPanel from '../components/CommandsPanel';
 import EmoteBar from '../components/EmoteBar';
 import PlayerLabels from '../components/PlayerLabels';
 import PoiMenu from '../components/PoiMenu';
 import TouchJoystick from '../components/TouchJoystick';
 import AvatarCustomizer from '../components/AvatarCustomizer';
-import { connectToHub, leaveHub } from '../net/hubConnection';
-import { attachKeyboard } from '../net/input';
+import { connectToHub, leaveHub, sendEmote } from '../net/hubConnection';
+import { attachKeyboard, input } from '../net/input';
+import { resolveShortcut, shouldPreventDefault } from '../net/shortcuts';
 import { useAuthStore } from '../store/auth';
 import { useHubStore } from '../store/hub';
 import { seedLocalPlayer } from '../three/localPlayer';
@@ -27,12 +29,22 @@ const CONNECTION_COPY: Record<string, string> = {
   failed: 'Impossibile riconnettersi. Ricarica la pagina.',
 };
 
+const COMMANDS_SEEN_KEY = 'bingo:commands-seen';
+
 export default function HubPage() {
   const navigate = useNavigate();
   const [showStats, setShowStats] = useState(false);
   const [showAvatar, setShowAvatar] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showEmotes, setShowEmotes] = useState(true);
+  const [showRoster, setShowRoster] = useState(false);
   const [touchDevice, setTouchDevice] = useState(false);
+  // Opened automatically the first time someone lands in the hub, then only on
+  // request. Kept in localStorage rather than on the account: it describes a
+  // browser's first visit, and there is no server-side question to ask.
+  const [showCommands, setShowCommands] = useState(
+    () => localStorage.getItem(COMMANDS_SEEN_KEY) !== '1',
+  );
 
   const user = useAuthStore((state) => state.user);
   const balance = useAuthStore((state) => state.balance);
@@ -49,6 +61,58 @@ export default function HubPage() {
   }, []);
 
   useEffect(() => attachKeyboard(), []);
+
+  /**
+   * Shortcuts.
+   *
+   * `resolveShortcut` decides what a key means; this only carries the decision
+   * out. The `typing` flag is the same one the movement code reads, so a key
+   * can never both type a letter and move the avatar.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const element = event.target as HTMLElement | null;
+      const typing =
+        input.typing || element?.tagName === 'INPUT' || element?.tagName === 'TEXTAREA';
+
+      const action = resolveShortcut(event, { typing });
+      if (!action) return;
+      if (shouldPreventDefault(action, event)) event.preventDefault();
+
+      switch (action.kind) {
+        case 'emote':
+          sendEmote(action.emote);
+          break;
+        case 'chat':
+          setShowChat(true);
+          break;
+        case 'emoteBar':
+          setShowEmotes((value) => !value);
+          break;
+        case 'roster':
+          setShowRoster((value) => !value);
+          break;
+        case 'help':
+          setShowCommands(true);
+          break;
+        case 'close':
+          // One panel at a time, innermost first, so Escape never clears the
+          // whole screen when the player meant to dismiss one dialog.
+          if (showCommands) dismissCommands();
+          else if (showAvatar) setShowAvatar(false);
+          else if (showRoster) setShowRoster(false);
+          else if (showChat) setShowChat(false);
+          break;
+        case 'interact':
+          // Interaction with a point of interest is the POI menu's own
+          // business; nothing else in the hub is reachable by hand yet.
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showAvatar, showChat, showCommands, showRoster]);
 
   useEffect(() => {
     void refreshBalance();
@@ -102,6 +166,11 @@ export default function HubPage() {
   }, [accessToken]);
 
   const statusCopy = CONNECTION_COPY[status] ?? '';
+
+  function dismissCommands(): void {
+    setShowCommands(false);
+    localStorage.setItem(COMMANDS_SEEN_KEY, '1');
+  }
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -219,14 +288,61 @@ export default function HubPage() {
         </div>
 
         <div className="flex flex-col items-end gap-2">
-          <EmoteBar />
-          <p className="pointer-events-none rounded-lg border border-surface-600/60 bg-surface-950/75 px-3 py-1.5 text-2xs font-medium text-content-muted shadow-hud backdrop-blur-xl">
+          {showEmotes && <EmoteBar />}
+          <button
+            type="button"
+            onClick={() => setShowCommands(true)}
+            className="pointer-events-auto rounded-lg border border-surface-600/60 bg-surface-950/75 px-3 py-1.5 text-2xs font-medium text-content-muted shadow-hud backdrop-blur-xl transition-colors hover:border-brand-400/50 hover:text-content-secondary"
+          >
             {touchDevice
               ? 'Stick per muoverti · trascina per girare'
-              : 'WASD per muoverti · Shift per correre · trascina per girare'}
-          </p>
+              : 'WASD per muoverti · Shift per correre · ? per i comandi'}
+          </button>
         </div>
       </div>
+
+      {/* --- Who is here. Tab, as every multiplayer game has taught. --- */}
+      {showRoster && (
+        <div
+          className="absolute inset-0 grid place-items-center bg-surface-950/50 p-4 backdrop-blur-sm"
+          style={{ zIndex: 'var(--z-overlay)' }}
+        >
+          <HudCard className="w-full max-w-sm">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className="font-display text-base font-black">
+                In piazza · {players.length}
+              </h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowRoster(false)} aria-label="Chiudi l’elenco">
+                ✕
+              </Button>
+            </div>
+            <ul className="grid max-h-72 gap-1 overflow-y-auto">
+              {players.map((player) => (
+                <li
+                  key={player.sessionId}
+                  className="flex items-center justify-between gap-2 rounded-md border border-surface-600/60 bg-surface-850/60 px-2.5 py-1.5 text-sm"
+                >
+                  <span className="truncate text-content-secondary">{player.displayName}</span>
+                  {player.userId === useHubStore.getState().myUserId && (
+                    <span className="shrink-0 text-2xs uppercase tracking-wider text-brand-300">
+                      tu
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </HudCard>
+        </div>
+      )}
+
+      {showCommands && (
+        <div
+          className="absolute inset-0 grid place-items-center bg-surface-950/60 p-4 backdrop-blur-sm"
+          style={{ zIndex: 'var(--z-overlay)' }}
+        >
+          <CommandsPanel onClose={dismissCommands} />
+        </div>
+      )}
 
       {showAvatar && <AvatarCustomizer onClose={() => setShowAvatar(false)} />}
     </div>
