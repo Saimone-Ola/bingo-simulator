@@ -302,9 +302,24 @@ export function createStageScreenTexture(): StageScreenTexture | null {
     context.font = '800 46px Inter, system-ui, sans-serif';
     context.fillText(state.headline, width / 2, 62);
 
-    context.fillStyle = '#ffd166';
-    context.font = '900 250px Inter, system-ui, sans-serif';
-    context.fillText(state.current === null ? '—' : String(state.current), width / 2, height / 2 + 12);
+    if (state.current === null) {
+      // Before the first draw there is no number to show. A 250px em-dash was
+      // rendering as a bare yellow bar across the middle of the screen, which
+      // reads as a broken display rather than as "not started yet".
+      context.fillStyle = '#4c4270';
+      context.font = '800 44px Inter, system-ui, sans-serif';
+      context.fillText('in attesa del primo numero', width / 2, height / 2 - 18);
+      context.fillStyle = '#2b2448';
+      for (let dot = 0; dot < 3; dot += 1) {
+        context.beginPath();
+        context.arc(width / 2 + (dot - 1) * 54, height / 2 + 52, 15, 0, Math.PI * 2);
+        context.fill();
+      }
+    } else {
+      context.fillStyle = '#ffd166';
+      context.font = '900 250px Inter, system-ui, sans-serif';
+      context.fillText(String(state.current), width / 2, height / 2 + 12);
+    }
 
     const ballRadius = 34;
     const spacing = ballRadius * 2 + 16;
@@ -323,9 +338,11 @@ export function createStageScreenTexture(): StageScreenTexture | null {
       context.fillText(String(value), x, height - 94);
     }
 
+    // Clear of the bottom edge: at height - 30 the descenders were being cut
+    // off by the screen bezel.
     context.fillStyle = '#9d8fd6';
     context.font = '700 30px Inter, system-ui, sans-serif';
-    context.fillText(state.footer, width / 2, height - 30);
+    context.fillText(state.footer, width / 2, height - 42);
     texture.needsUpdate = true;
   };
 

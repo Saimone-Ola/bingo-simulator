@@ -7,7 +7,7 @@ import ProceduralCharacter, { type CharacterAnimationState } from '../Procedural
 import { NumberBoard } from './NumberBoard';
 import { createStageScreenTexture, labelTexture } from './textures';
 import type { HallMood } from './eventChoreography';
-import { STAGE } from './hallLayout';
+import { HALL_SHELL, STAGE } from './hallLayout';
 
 /**
  * Stage, presenter, ball machine, big screen and the tabellone behind them.
@@ -142,10 +142,40 @@ function StageSpot({
         intensity={30}
         target={target}
       />
-      <mesh position={[x, 5.5, STAGE.maxZ + 0.6]} rotation={[Math.PI / 2.6, 0, 0]}>
-        <coneGeometry args={[0.16, 0.34, 10]} />
-        <meshStandardMaterial color="#1a1424" roughness={0.5} metalness={0.5} />
-      </mesh>
+      {/*
+        The fixture the spotlight comes out of.
+
+        This was a bare metallic cone hanging in mid-air with nothing holding it
+        up, which against a dark ceiling read as a paper aeroplane floating over
+        the hall. A lamp needs somewhere to be attached to before it reads as a
+        lamp: plate, drop rod, barrel, lens.
+      */}
+      <group position={[x, 0, STAGE.maxZ + 0.6]}>
+        <mesh position={[0, HALL_SHELL.ceilingHeight - 0.04, 0]}>
+          <cylinderGeometry args={[0.14, 0.14, 0.06, 12]} />
+          <meshStandardMaterial color="#2a2033" roughness={0.6} metalness={0.3} />
+        </mesh>
+        <mesh position={[0, (HALL_SHELL.ceilingHeight + 5.62) / 2, 0]}>
+          <cylinderGeometry args={[0.022, 0.022, HALL_SHELL.ceilingHeight - 5.62, 8]} />
+          <meshStandardMaterial color="#2a2033" roughness={0.6} metalness={0.4} />
+        </mesh>
+        <group position={[0, 5.5, 0]} rotation={[Math.PI / 2.6, 0, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.15, 0.11, 0.34, 12]} />
+            <meshStandardMaterial color="#2b2135" roughness={0.5} metalness={0.45} />
+          </mesh>
+          {/* Lens, lit so the beam has a visible source. */}
+          <mesh position={[0, -0.18, 0]}>
+            <cylinderGeometry args={[0.13, 0.13, 0.02, 12]} />
+            <meshStandardMaterial
+              color={colour}
+              emissive={colour}
+              emissiveIntensity={1.6}
+              toneMapped={false}
+            />
+          </mesh>
+        </group>
+      </group>
     </group>
   );
 }

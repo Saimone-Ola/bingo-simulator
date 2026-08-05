@@ -221,11 +221,33 @@ export function BingoHallEnvironment({
         </group>
       ))}
 
-      {/* Ceiling */}
+      {/*
+        Ceiling.
+
+        Seen almost edge-on from standing eye height and lit only by lamps
+        pointing straight down, a dark ceiling crushes to pure black and the
+        hall reads as a room with no roof — with the lamps floating in the void
+        like paper aeroplanes. A faint emissive keeps it a surface at grazing
+        angles without turning it into a light source.
+      */}
       <mesh position={[CENTRE_X, HALL_SHELL.ceilingHeight, CENTRE_Z]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[WIDTH, DEPTH]} />
-        <meshStandardMaterial color="#191024" roughness={0.95} side={THREE.DoubleSide} />
+        <meshStandardMaterial
+          color="#3a2740"
+          emissive="#241830"
+          emissiveIntensity={0.55}
+          roughness={0.95}
+          side={THREE.DoubleSide}
+        />
       </mesh>
+
+      {/* Cove trim where wall meets ceiling: gives the roof an edge to read. */}
+      {[HALL_SHELL.minZ + 0.3, HALL_SHELL.maxZ - 0.3].map((z) => (
+        <mesh key={z} position={[CENTRE_X, HALL_SHELL.ceilingHeight - 0.14, z]}>
+          <boxGeometry args={[WIDTH, 0.1, 0.14]} />
+          <meshStandardMaterial color="#6b4a52" emissive="#e2a86b" emissiveIntensity={0.5} />
+        </mesh>
+      ))}
 
       {lampPositions.map((lamp) => (
         <CeilingLamp
