@@ -171,3 +171,39 @@ con un template literal non genera nessun CSS:
 - Gli errori di form sono testo, non solo colore.
 - Il colore non è mai l'unico veicolo di un'informazione: la rarità ha
   l'etichetta, lo stato ha la parola.
+- Le verifiche in `/tesi` hanno il segno `✓`/`✕` **e** un testo per lettori di
+  schermo: verde e rosso non bastano.
+- Ogni grafico ha `role="img"` con un `aria-label` che riporta il valore, perché
+  una curva non è leggibile ad alta voce.
+
+---
+
+## Comandi da tastiera
+
+La tabella dei comandi mostrata al giocatore (`components/CommandsPanel.tsx`)
+non è scritta a mano: legge `SHORTCUT_HELP` da `net/shortcuts.ts`, lo stesso
+modulo che decide cosa fa ciascun tasto. Un test verifica che ogni tasto
+pubblicizzato risolva davvero in un'azione, così il pannello non può promettere
+qualcosa che il codice non fa.
+
+Due regole valgono più della tabella:
+
+- Mentre un campo di testo ha il focus, l'unico tasto che significa ancora
+  qualcosa è `Esc`. Si legge lo stesso flag `typing` del movimento, quindi un
+  tasto non può contemporaneamente scrivere una lettera e muovere l'avatar.
+- Il comportamento predefinito di `Esc` non viene **mai** soppresso: trattenerlo
+  è il modo in cui una pagina intrappola l'utente nel pointer lock.
+
+---
+
+## 3D e design system
+
+I materiali Three.js non leggono le custom property CSS, quindi i colori delle
+scene stanno in `src/three/palette.ts` — l'unica eccezione documentata alla
+regola "nessun valore letterale". Vale però lo stesso principio: un colore usato
+in due scene sta in una costante, non in due letterali.
+
+Sulle scene 3D il typecheck non dice quasi niente di utile: un materiale può
+compilare e renderizzare nero, un piano può avere la normale dalla parte
+sbagliata ed essere semplicemente invisibile. Entrambe le cose sono successe. La
+verifica sensata è aprire la scena e guardarla.

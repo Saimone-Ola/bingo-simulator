@@ -161,19 +161,6 @@ export function stepMovement(
   return state;
 }
 
-/** Shortest signed angle from `from` to `to`, in radians. */
-export function shortestAngle(from: number, to: number): number {
-  let difference = (to - from) % (Math.PI * 2);
-  if (difference > Math.PI) difference -= Math.PI * 2;
-  if (difference < -Math.PI) difference += Math.PI * 2;
-  return difference;
-}
-
-/** Frame rate independent exponential approach, mirrors THREE.MathUtils.damp. */
-export function damp(current: number, target: number, lambda: number, delta: number): number {
-  return current + (target - current) * (1 - Math.exp(-lambda * delta));
-}
-
-export function dampAngle(current: number, target: number, lambda: number, delta: number): number {
-  return current + shortestAngle(current, target) * (1 - Math.exp(-lambda * delta));
-}
+// Smoothing lives in ../damping and is re-exported here so the callers that
+// already import it from this module keep working.
+export { damp, dampAngle, shortestAngle } from '../damping';

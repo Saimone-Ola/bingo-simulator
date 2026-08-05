@@ -1,7 +1,5 @@
 import { Room, ServerError, type Client } from 'colyseus';
 import {
-  AVATAR_RUN_SPEED,
-  AVATAR_WALK_SPEED,
   CLIENT_MESSAGES,
   EMOTE_DURATION_MS,
   HUB_MAX_AVATARS,
@@ -12,12 +10,15 @@ import {
   RECONNECTION_WINDOW_SECONDS,
   SERVER_MESSAGES,
   chatSendSchema,
+  createAvatarMotion,
   emoteSchema,
   moveIntentSchema,
   pingSchema,
   resolvePosition,
+  stepAvatarMotion,
   teleportRequestSchema,
   type ActionRejectedPayload,
+  type AvatarMotion,
   type ChatMessagePayload,
   type ClientMessage,
   type EmotePlayedPayload,
@@ -57,6 +58,13 @@ interface Connection {
   limiter: ActionRateLimiter;
   intent: MoveIntent | null;
   intentAt: number;
+  /**
+   * Authoritative velocity, kept here rather than in the replicated schema:
+   * the client predicts its own and derives everyone else's from the positions
+   * it already receives, so putting it on the wire would cost bandwidth to say
+   * something the receiver can work out.
+   */
+  motion: AvatarMotion;
   emoteExpiresAt: number;
   /** Rejected or malformed messages, for the anti-cheat signal in phase 8. */
   violations: number;
@@ -142,6 +150,16 @@ export class HubRoom extends Room<{ state: HubState }> {
           player.z = resolved.z;
           player.moving = false;
           player.running = false;
+
+          // Arriving somewhere else at the speed you left at would carry you
+          // straight off the arrival point, so the velocity goes with it.
+          const connection = this.connections.get(client.sessionId);
+          if (connection) {
+            connection.motion.x = resolved.x;
+            connection.motion.z = resolved.z;
+            connection.motion.vx = 0;
+            connection.motion.vz = 0;
+          }
 
           const applied: TeleportAppliedPayload = {
             poiId: poi.id,
@@ -247,6 +265,7 @@ export class HubRoom extends Room<{ state: HubState }> {
       limiter: new ActionRateLimiter(),
       intent: null,
       intentAt: 0,
+      motion: createAvatarMotion(player.x, player.z),
       emoteExpiresAt: 0,
       violations: 0,
     });
@@ -485,39 +504,29 @@ export class HubRoom extends Room<{ state: HubState }> {
       const intent = connection.intent;
       const stale = !intent || now - connection.intentAt > INTENT_STALE_MS;
 
-      if (stale) {
-        if (player.moving) {
-          player.moving = false;
-          player.running = false;
-        }
-        continue;
+      // A stale intent is not a stop command: the player may simply have gone
+      // quiet mid-stride. The avatar decelerates from wherever it was, which is
+      // both what the client is predicting and what stops a dropped packet
+      // freezing someone in place.
+      const step = stale
+        ? { dirX: 0, dirZ: 0, run: false }
+        : { dirX: intent.dirX, dirZ: intent.dirZ, run: intent.run };
+
+      if (!stale) {
+        player.lastSeq = intent.seq;
+        player.rotY = intent.facing;
       }
 
-      player.lastSeq = intent.seq;
-      player.rotY = intent.facing;
+      // Position is authoritative in the schema, velocity is not, so the two
+      // are joined up around the shared step rather than duplicated.
+      connection.motion.x = player.x;
+      connection.motion.z = player.z;
+      const result = stepAvatarMotion(connection.motion, step, dt);
 
-      // Normalise rather than trust: a client sending (1, 1) would otherwise
-      // travel 1.41x faster on the diagonal.
-      const magnitude = Math.hypot(intent.dirX, intent.dirZ);
-      if (magnitude < 0.01) {
-        player.moving = false;
-        player.running = false;
-        continue;
-      }
-
-      const dirX = intent.dirX / magnitude;
-      const dirZ = intent.dirZ / magnitude;
-      const speed = intent.run ? AVATAR_RUN_SPEED : AVATAR_WALK_SPEED;
-
-      const resolved = resolvePosition(
-        player.x + dirX * speed * dt,
-        player.z + dirZ * speed * dt,
-      );
-
-      player.x = resolved.x;
-      player.z = resolved.z;
-      player.moving = true;
-      player.running = intent.run;
+      player.x = connection.motion.x;
+      player.z = connection.motion.z;
+      player.moving = result.moving;
+      player.running = result.moving && !stale && intent.run;
     }
   }
 

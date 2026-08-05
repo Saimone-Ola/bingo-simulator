@@ -10,6 +10,8 @@ import { useAuthStore } from './store/auth';
 const StyleGuidePage = lazy(() => import('./routes/StyleGuidePage'));
 const BingoPage = lazy(() => import('./routes/BingoPage'));
 const ThesisModePage = lazy(() => import('./routes/ThesisModePage'));
+const ArcadePage = lazy(() => import('./routes/ArcadePage'));
+const SlotEditorPage = lazy(() => import('./routes/SlotEditorPage'));
 
 function RouteLoader({ label }: { label: string }) {
   return (
@@ -52,6 +54,26 @@ export default function App() {
             element={
               <Protected>
                 <HubPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/arcade"
+            element={
+              <Protected>
+                <Suspense fallback={<RouteLoader label="Apertura arcade" />}>
+                  <ArcadePage />
+                </Suspense>
+              </Protected>
+            }
+          />
+          <Route
+            path="/arcade/editor"
+            element={
+              <Protected>
+                <Suspense fallback={<RouteLoader label="Apertura editor slot" />}>
+                  <SlotEditorPage />
+                </Suspense>
               </Protected>
             }
           />

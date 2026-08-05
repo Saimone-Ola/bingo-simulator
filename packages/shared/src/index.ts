@@ -5,8 +5,12 @@ export * from './auth';
 export * from './errors';
 export * from './chat';
 export * from './world';
+export * from './avatarMotion';
 export * from './protocol';
 
 export * from './avatar';
 export * from './bingo';
 export * from './bingoEvents';
+export * from './slots';
+export * from './slotPresets';
+export * from './slotProtocol';

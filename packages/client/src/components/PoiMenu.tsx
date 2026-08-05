@@ -9,9 +9,16 @@ import { sendTeleport } from '../net/hubConnection';
 export default function PoiMenu() {
   const navigate = useNavigate();
 
+  /** Destinations that have their own room; the rest teleport within the plaza. */
+  const ROUTES: Record<string, string> = {
+    bingo_hall: '/bingo?room=TESI-2026',
+    slot_arcade: '/arcade',
+  };
+
   const enter = (poiId: string) => {
-    if (poiId === 'bingo_hall') {
-      navigate('/bingo?room=TESI-2026');
+    const route = ROUTES[poiId];
+    if (route) {
+      navigate(route);
       return;
     }
     sendTeleport(poiId);
@@ -35,7 +42,7 @@ export default function PoiMenu() {
           <span className="flex items-center justify-between gap-3">
             <span>{poi.label}</span>
             <span className="text-[0.58rem] font-black uppercase tracking-wider text-success-400">
-              {poi.id === 'bingo_hall' ? 'Gioca →' : 'Vai →'}
+              {ROUTES[poi.id] ? 'Gioca →' : 'Vai →'}
             </span>
           </span>
         </button>

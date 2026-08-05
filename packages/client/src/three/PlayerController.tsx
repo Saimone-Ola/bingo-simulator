@@ -3,11 +3,11 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Vector3 } from 'three';
 import {
   AVATAR_EYE_HEIGHT,
-  AVATAR_RUN_SPEED,
-  AVATAR_WALK_SPEED,
   CAMERA_MIN_HEIGHT,
   HUB_TICK_MS,
-  resolvePosition,
+  avatarFacing,
+  createAvatarMotion,
+  stepAvatarMotion,
   sweepCameraFraction,
 } from '@bingo/shared';
 import { getRoom, sendMoveIntent } from '../net/hubConnection';
@@ -45,6 +45,8 @@ export default function PlayerController() {
   const desired = useRef(new Vector3());
   /** Fraction of the requested camera distance currently free of geometry. */
   const occlusion = useRef(1);
+  /** Scratch handed to the shared step; the durable state is on localPlayer. */
+  const motionRef = useRef(createAvatarMotion(0, 0));
 
   /* --- Pointer look. Bound to the canvas so UI panels keep their clicks. --- */
   useEffect(() => {
@@ -124,28 +126,31 @@ export default function PlayerController() {
     // third-person control scheme has taught players to expect.
     const sin = Math.sin(yaw.current);
     const cos = Math.cos(yaw.current);
-    let dirX = axes.right * cos - axes.forward * sin;
-    let dirZ = -axes.right * sin - axes.forward * cos;
+    const dirX = axes.right * cos - axes.forward * sin;
+    const dirZ = -axes.right * sin - axes.forward * cos;
 
-    const magnitude = Math.hypot(dirX, dirZ);
-    const moving = magnitude > 0.01;
+    const pressing = Math.hypot(dirX, dirZ) > 0.01;
 
-    if (moving) {
-      dirX /= magnitude;
-      dirZ /= magnitude;
+    // Prediction runs the *same* function the server does, so the two agree to
+    // within a few centimetres over seconds of walking — far inside
+    // RECONCILE_THRESHOLD, and the reason a correction is almost never visible.
+    const motion = motionRef.current;
+    motion.x = localPlayer.x;
+    motion.z = localPlayer.z;
+    motion.vx = localPlayer.vx;
+    motion.vz = localPlayer.vz;
+    const step = stepAvatarMotion(motion, { dirX, dirZ, run: axes.run }, dt);
+    localPlayer.x = motion.x;
+    localPlayer.z = motion.z;
+    localPlayer.vx = motion.vx;
+    localPlayer.vz = motion.vz;
 
-      const speed = axes.run ? AVATAR_RUN_SPEED : AVATAR_WALK_SPEED;
-      const resolved = resolvePosition(
-        localPlayer.x + dirX * speed * dt,
-        localPlayer.z + dirZ * speed * dt,
-      );
-      localPlayer.x = resolved.x;
-      localPlayer.z = resolved.z;
-      localPlayer.rotY = Math.atan2(dirX, dirZ);
-    }
+    const facing = avatarFacing(motion);
+    if (facing !== null) localPlayer.rotY = facing;
 
+    const moving = step.moving;
     localPlayer.moving = moving;
-    localPlayer.running = moving && axes.run;
+    localPlayer.running = moving && pressing && axes.run;
 
     // Reconciliation. Small disagreements are latency and are ignored; a large
     // one means the prediction was wrong - a collision the client resolved
@@ -165,11 +170,14 @@ export default function PlayerController() {
     if (sinceLastIntent.current >= HUB_TICK_MS) {
       sinceLastIntent.current = 0;
       localPlayer.seq += 1;
+      // What is sent is what the player is *pressing*, not what the avatar is
+      // doing: coasting to a stop is something the server derives for itself
+      // from the absence of an intent, exactly as the prediction does here.
       sendMoveIntent(
         localPlayer.seq,
-        moving ? dirX : 0,
-        moving ? dirZ : 0,
-        localPlayer.running,
+        pressing ? dirX : 0,
+        pressing ? dirZ : 0,
+        pressing && axes.run,
         localPlayer.rotY,
       );
     }
