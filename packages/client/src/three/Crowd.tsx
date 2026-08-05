@@ -90,14 +90,19 @@ function appearanceFor(remote: RemotePlayer | undefined): AvatarAppearance {
   };
 }
 
-function animationFor(remote: RemotePlayer, isSelf: boolean): CharacterAnimationState {
+export function animationFor(remote: RemotePlayer, isSelf: boolean): CharacterAnimationState {
+  // One emote, one animation. Three of these used to collapse onto CELEBRATE
+  // and "saluta" played the talking gesture, so half the bar did the same
+  // thing and none of it matched its label.
   switch (remote.emote) {
-    case 'dance':
-    case 'cheer':
-    case 'clap':
-      return 'CELEBRATE';
     case 'wave':
-      return 'TALK';
+      return 'WAVE';
+    case 'clap':
+      return 'APPLAUD';
+    case 'dance':
+      return 'DANCE';
+    case 'cheer':
+      return 'CELEBRATE';
     case 'laugh':
       return 'LAUGH';
     case 'sit':
