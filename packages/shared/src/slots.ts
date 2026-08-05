@@ -524,9 +524,15 @@ export interface SlotRtpComparison {
 /**
  * Puts the computed line RTP next to a measured one.
  *
- * The two will not match exactly — the analytic figure covers only the line
- * game — but the line component dominates, so a wide gap means either the
- * scatter pays are doing far more work than intended or something is wrong.
+ * The two are not meant to match. The analytic figure covers the base line
+ * game only, so it is a strict lower bound: scatters and free spins can only
+ * add to it. On the calibrated presets the features account for between a fifth
+ * and a third of the whole return, so a large positive `drift` is the normal
+ * case and not a warning.
+ *
+ * A *negative* drift is the one worth acting on. The measurement came out below
+ * a figure it cannot go below at convergence, which means the sample is too
+ * short — or the two implementations have genuinely diverged.
  */
 export function compareSlotRtp(config: SlotConfig, simulation: SlotSimulation): SlotRtpComparison {
   const analytic = analyticLineRtp(config);

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import ThesisChecks from '../components/ThesisChecks';
 
 const CHAPTERS = [
   {
@@ -30,7 +31,17 @@ const CHAPTERS = [
       'Eventi comici e imprevedibili modificano atmosfera e ritmo, senza cambiare l’ordine dei numeri o le probabilità.',
     proof: ['Selezione pesata', 'Cooldown e limiti', 'Modalità Classica–Assurda'],
   },
+  {
+    eyebrow: '05 · Verifica',
+    title: 'Le proprietà, controllate mentre guardi',
+    description:
+      'Ogni affermazione dei capitoli precedenti è ricontrollata qui eseguendo il codice condiviso, adesso, in questa pagina.',
+    proof: [],
+  },
 ] as const;
+
+/** The closing chapter runs code instead of describing it. */
+const CHECKS_CHAPTER = CHAPTERS.length - 1;
 
 export default function ThesisModePage() {
   const navigate = useNavigate();
@@ -88,23 +99,41 @@ export default function ThesisModePage() {
             <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-300">
               {current.eyebrow}
             </p>
-            <h2 className="mt-4 max-w-4xl font-display text-5xl font-black leading-[0.96] sm:text-6xl lg:text-7xl">
+            <h2
+              className={`mt-4 max-w-4xl font-display font-black leading-[0.96] ${
+                chapter === CHECKS_CHAPTER
+                  ? 'text-3xl sm:text-4xl'
+                  : 'text-5xl sm:text-6xl lg:text-7xl'
+              }`}
+            >
               {current.title}
             </h2>
-            <p className="mt-6 max-w-3xl text-lg leading-8 text-white/65 sm:text-xl">
+            <p
+              className={`max-w-3xl text-white/65 ${
+                chapter === CHECKS_CHAPTER
+                  ? 'mt-3 text-sm leading-6'
+                  : 'mt-6 text-lg leading-8 sm:text-xl'
+              }`}
+            >
               {current.description}
             </p>
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              {current.proof.map((item) => (
-                <span
-                  key={item}
-                  className="rounded-full border border-violet-300/20 bg-violet-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-violet-100"
-                >
-                  {item}
-                </span>
-              ))}
-            </div>
+            {chapter === CHECKS_CHAPTER ? (
+              <div className="mt-5">
+                <ThesisChecks />
+              </div>
+            ) : (
+              <div className="mt-8 flex flex-wrap gap-3">
+                {current.proof.map((item) => (
+                  <span
+                    key={item}
+                    className="rounded-full border border-violet-300/20 bg-violet-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-violet-100"
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <aside className="rounded-[2rem] border border-white/10 bg-[#15132b]/88 p-5 shadow-[0_30px_100px_-35px_rgb(0_0_0_/_0.95)] backdrop-blur-xl sm:p-7">
