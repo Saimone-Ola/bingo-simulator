@@ -6,6 +6,7 @@ import {
   AVATAR_WALK_SPEED,
   CLIENT_MESSAGES,
   HUB_MAX_AVATARS,
+  HUB_POIS,
   ROOM_NAMES,
   SERVER_MESSAGES,
   type ActionRejectedPayload,
@@ -240,7 +241,7 @@ suite('hub room', () => {
     await client.leave();
   });
 
-  it('refuses a teleport to a destination that does not exist yet', async () => {
+  it('refuses a teleport to somewhere that is not a destination', async () => {
     const room = await colyseus.createRoom(ROOM_NAMES.hub);
     const player = await createPlayer('Fabio');
     const client = await colyseus.connectTo(room, { accessToken: player.token });
@@ -249,21 +250,35 @@ suite('hub room', () => {
     const rejected: ActionRejectedPayload[] = [];
     client.onMessage(SERVER_MESSAGES.actionRejected, (message) => rejected.push(message));
 
-    client.send(CLIENT_MESSAGES.teleportRequest, { poiId: 'bingo_hall' });
-    await wait(200);
     client.send(CLIENT_MESSAGES.teleportRequest, { poiId: 'nowhere' });
     await wait(200);
-
-    expect(rejected.map((entry) => entry.code)).toContain('not_available_yet');
-    expect(rejected.map((entry) => entry.code)).toContain('unknown_target');
-
-    // The one that does exist in phase 1 works.
+    // The fountain is scenery and a collider, never a place you are sent to.
     client.send(CLIENT_MESSAGES.teleportRequest, { poiId: 'fountain' });
+    await wait(200);
+
+    expect(rejected.map((entry) => entry.code)).toEqual(['unknown_target', 'unknown_target']);
+
+    // A real destination puts the player where the world says it stands.
+    const hall = HUB_POIS.find((poi) => poi.id === 'bingo_hall')!;
+    client.send(CLIENT_MESSAGES.teleportRequest, { poiId: hall.id });
     await wait(250);
     const state = room.state.players.get(client.sessionId);
-    expect(state?.z).toBeCloseTo(5, 0);
+    expect(state?.x).toBeCloseTo(hall.standX, 1);
+    expect(state?.z).toBeCloseTo(hall.standZ, 1);
 
     await client.leave();
+  });
+
+  it('publishes no destination the current phase cannot reach', () => {
+    // The room refuses anything gated behind a later phase, and this test used
+    // to prove it by teleporting to the Bingo hall — which was phase 2 when it
+    // was written and has been phase 1 for a long time, so the assertion was
+    // waiting for a database that never arrived to tell anyone. The invariant
+    // worth holding is the one on the data: nothing is published as a
+    // destination that a player is then told they cannot go to.
+    for (const poi of HUB_POIS) {
+      expect(poi.availableFromPhase, poi.id).toBeLessThanOrEqual(1);
+    }
   });
 
   it('supersedes a previous session instead of leaving a ghost avatar', async () => {
