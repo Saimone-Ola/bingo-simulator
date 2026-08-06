@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { labelTexture } from './textures';
 import type { HallMood } from './eventChoreography';
-import { ENTRANCE, HALL_SHELL, STAGE } from './hallLayout';
+import { CEILING_LAMPS, ENTRANCE, HALL_SHELL, STAGE } from './hallLayout';
 
 /**
  * Shell of the hall: floor, walls, ceiling, house lighting and the small
@@ -161,18 +161,17 @@ export function BingoHallEnvironment({
     return texture;
   }, []);
 
+  /**
+   * Which lamps carry a real light.
+   *
+   * Point lights are the expensive part and painted ones are not, so the quality
+   * profile decides how many are lit. They are spread by stride rather than taken
+   * from the front of the list: on a low setting the first three lamps in the
+   * array are one corner of the hall, and the rest of the room would sit dark.
+   */
   const lampPositions = useMemo(() => {
-    const positions: Array<{ x: number; z: number; lit: boolean }> = [];
-    const columns = [-6.6, 0, 6.6];
-    const rows = [-5.0, 0.3, 5.4];
-    let index = 0;
-    for (const z of rows) {
-      for (const x of columns) {
-        positions.push({ x, z, lit: index < accentLights });
-        index += 1;
-      }
-    }
-    return positions;
+    const stride = Math.max(1, Math.round(CEILING_LAMPS.length / Math.max(1, accentLights)));
+    return CEILING_LAMPS.map((lamp, index) => ({ ...lamp, lit: index % stride === 0 }));
   }, [accentLights]);
 
   const houseColor = mood.emergencyLights ? '#4b60ff' : mood.greenWash ? '#8dff9f' : '#ffd7a3';

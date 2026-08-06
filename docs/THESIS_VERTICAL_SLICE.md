@@ -48,6 +48,27 @@ contratti perché non esiste un secondo file da aggiornare.
 11. Riconnessione entro 60 secondi e riassegnazione dell'host.
 12. Chiamata vocale italiana e storico degli ultimi cinque numeri.
 
+### Sala da 512 posti
+
+- 64 tavoli da 8 sedie su una griglia di circa 50 × 57 metri. Ogni sedia libera
+  è occupabile: la stessa lista di posti serve al renderer, ai collider e al
+  `SeatRegistry` autoritativo, quindi non esiste una sedia disegnata dove il
+  server non farebbe sedere nessuno.
+- **Livelli di dettaglio** per la folla e per l'arredo: i personaggi vicini sono
+  completi, quelli a media distanza silhouette statiche, i lontani istanze in
+  due sole chiamate di disegno. Tavoli e sedie oltre i 12 metri diventano
+  quattro mesh istanziate invece di circa 7 400. La selezione è una funzione
+  pura dei soli dati di posizione, quindi è verificata dai test e non dal
+  frame rate di una macchina.
+- **Venti tabelloni** distribuiti nella sala: la coppia ai lati del palco,
+  pannelli sulle pareti laterali e sopra l'ingresso, e nove unità a quattro
+  facce appese sopra i corridoi. Dal posto peggiore della sala il tabellone
+  leggibile più vicino è a **11,0 metri**; la mediana è **5,7 metri**. Tutti
+  condividono un'unica texture, ridipinta solo quando esce un numero.
+- I test asseriscono le proprietà che contano: ogni posto vede un tabellone
+  entro la distanza di lettura, nessuna unità appesa si frappone fra un posto e
+  lo schermo del palco, e nessuna interseca i corpi illuminanti del soffitto.
+
 ### Hub navigabile
 
 - Movimento in terza persona con predizione client e riconciliazione.

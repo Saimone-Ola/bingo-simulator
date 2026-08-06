@@ -133,6 +133,31 @@ export const STAGE = {
 } as const;
 
 /**
+ * The house lighting rig, on the ceiling.
+ *
+ * Geometry rather than decoration, so it lives here with the rest of the room:
+ * the rows are picked to fall between the rows of hanging tabelloni, and a test
+ * holds them there. The previous grid was three by three at ±6.6 m, which lit
+ * the whole of the old forty-seat room and lights the middle third of this one.
+ */
+export const CEILING_LAMPS: readonly { readonly x: number; readonly z: number }[] = (() => {
+  const columns = [-17.4, -8.7, 0, 8.7, 17.4];
+  const rows = [-13.0, -2.5, 9.0, 20.5, 31.0];
+  const lamps: { x: number; z: number }[] = [];
+  for (const z of rows) for (const x of columns) lamps.push({ x, z });
+  return lamps;
+})();
+
+/**
+ * Centre of the big screen above the stage.
+ *
+ * Exported rather than left as a literal in the stage component because it is
+ * the target of the sightline every seat has to keep: anything hung in the room
+ * is checked against the line from a seated eye to this point.
+ */
+export const STAGE_SCREEN = { x: 0, y: 3.3, z: STAGE.minZ + 0.26 } as const;
+
+/**
  * Reception and spawn sit at the entrance, which is the far end from the stage.
  *
  * They used to be typed in at z ≈ 8.5, which was the back of a small hall and
