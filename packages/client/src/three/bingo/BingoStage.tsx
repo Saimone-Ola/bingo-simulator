@@ -4,10 +4,9 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { AvatarAppearance } from '@bingo/shared';
 import ProceduralCharacter, { type CharacterAnimationState } from '../ProceduralCharacter';
-import { NumberBoard } from './NumberBoard';
 import { createStageScreenTexture, labelTexture } from './textures';
 import type { HallMood } from './eventChoreography';
-import { HALL_SHELL, STAGE } from './hallLayout';
+import { HALL_SHELL, STAGE, STAGE_SCREEN } from './hallLayout';
 
 /**
  * Stage, presenter, ball machine, big screen and the tabellone behind them.
@@ -244,7 +243,7 @@ export function BingoStage({
       )}
 
       {/* Big screen */}
-      <group position={[0, 3.3, STAGE.minZ + 0.26]}>
+      <group position={[STAGE_SCREEN.x, STAGE_SCREEN.y, STAGE_SCREEN.z]}>
         <RoundedBox args={[4.4, 2.3, 0.14]} radius={0.06} smoothness={2}>
           <meshStandardMaterial color="#0b0814" roughness={0.35} metalness={0.4} />
         </RoundedBox>
@@ -256,23 +255,10 @@ export function BingoStage({
         )}
       </group>
 
-      {/* Tabellone flanking the screen, readable from the far tables */}
-      <NumberBoard
-        drawnNumbers={drawnNumbers}
-        currentNumber={currentNumber}
-        position={[-7.4, 2.9, -7.2]}
-        rotationY={0.66}
-        width={5.6}
-        height={2.0}
-      />
-      <NumberBoard
-        drawnNumbers={drawnNumbers}
-        currentNumber={currentNumber}
-        position={[7.4, 2.9, -7.2]}
-        rotationY={-0.66}
-        width={5.6}
-        height={2.0}
-      />
+      {/* The tabelloni flanking this screen are drawn by HallNumberBoards along
+          with the rest of the hall's boards: they were literals here, at a z
+          that predated the hall being resized, and ended up hanging over the
+          seventh row of tables. */}
 
       <BallMachine spinning={spinning} reducedMotion={reducedMotion} />
       <Microphone position={[STAGE.hostX - 0.55, STAGE.height, STAGE.hostZ + 0.35]} />

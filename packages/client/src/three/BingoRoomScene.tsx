@@ -24,6 +24,7 @@ import PlayerMovementController, {
 import { crowdAnimation, moodFor } from './bingo/eventChoreography';
 import { buildOccupancy } from './bingo/occupants';
 import CrowdInstances from './bingo/CrowdInstances';
+import HallNumberBoards from './bingo/HallNumberBoards';
 import InstancedFurniture from './bingo/InstancedFurniture';
 import { budgetFor, selectCrowdTiers } from './bingo/crowdLod';
 import { SEATS, SPAWN, STANDING_EYE_HEIGHT, TABLES, TABLE_TOP_HEIGHT } from './bingo/hallLayout';
@@ -140,16 +141,19 @@ function HallLighting({
       key.current.intensity += (2.1 * lightScale - key.current.intensity) * blend;
     }
     if (fog.current) {
-      const target = 15 - fogBoost * 8;
+      // The hall is fifty-eight metres from the doors to the stage. Fog that
+      // ended at forty-one was atmosphere in the old room and a grey wall across
+      // the middle of this one — you walked in and the stage was not there.
+      const target = 22 - fogBoost * 10;
       fog.current.near += (target - fog.current.near) * blend;
-      fog.current.far += (target + 26 - fog.current.far) * blend;
+      fog.current.far += (target + 52 - fog.current.far) * blend;
     }
   });
 
   return (
     <>
       <color attach="background" args={['#100a1b']} />
-      <fog ref={fog} attach="fog" args={['#1a1226', 15, 41]} />
+      <fog ref={fog} attach="fog" args={['#1a1226', 22, 74]} />
       <ambientLight ref={ambient} intensity={0.84} color={tint} />
       <hemisphereLight ref={hemisphere} args={['#ffe6c4', '#3a2740', 1.5]} />
       <directionalLight
@@ -396,6 +400,11 @@ function Scene(props: BingoRoomSceneProps) {
         spinning={phase === 'PLAYING'}
         hostState={mood.hostState}
       />
+
+      {/* The numbers, repeated round the room: side walls, over the doors and
+          on four-sided units hung above the aisles, so no seat in a fifty-metre
+          hall has to squint at the stage. */}
+      <HallNumberBoards drawnNumbers={drawnNumbers} currentNumber={currentNumber} />
 
       <BingoReception
         info={receptionInfo}
