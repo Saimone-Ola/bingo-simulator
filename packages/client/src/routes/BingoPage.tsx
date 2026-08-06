@@ -395,6 +395,7 @@ export default function BingoPage() {
                 maxPlayers={snapshot.config.maxPlayers}
                 players={snapshot.players}
                 mySessionId={snapshot.mySessionId}
+              mySeatId={snapshot.mySeatId}
                 myCards={snapshot.myCards}
                 currentNumber={snapshot.currentNumber}
                 drawnNumbers={snapshot.drawnNumbers}

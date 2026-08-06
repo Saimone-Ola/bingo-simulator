@@ -6,7 +6,9 @@ import {
   type SlotMachineDetail,
   type SlotSpinResponse,
 } from '@bingo/shared';
+import { allLibrarySymbols } from '@bingo/shared';
 import { playHallSfx, resumeHallAudio } from '../audio/hallAudio';
+import SlotSymbol from './SlotSymbol';
 import { Button, CreditAmount } from './ui';
 
 /**
@@ -19,21 +21,26 @@ import { Button, CreditAmount } from './ui';
  * last reel stops.
  */
 
-const SYMBOL_ART: Record<string, string> = {
-  cherry: '🍒',
-  lemon: '🍋',
-  bell: '🔔',
-  seven: '7️⃣',
-  wild: '🃏',
-  scatter: '⭐',
-};
+/**
+ * Drawing instructions for a symbol id.
+ *
+ * Built once from the whole library, so a machine using any theme renders
+ * without the panel knowing which theme that is. Falls back to a plain disc:
+ * an author can invent a symbol id, and an unknown symbol must still be a
+ * symbol rather than a blank cell.
+ */
+const SYMBOL_ART = new Map(
+  allLibrarySymbols().map((entry) => [entry.id, entry] as const),
+);
+
+const UNKNOWN_SYMBOL = { shape: 'circle' as const, color: '#8a80a8', accent: '#4a4266' };
 
 const REEL_STOP_MS = 320;
 const NEAR_MISS_EXTRA_MS = 620;
 const SPIN_MIN_MS = 520;
 
-function artFor(symbolId: string): string {
-  return SYMBOL_ART[symbolId] ?? symbolId.slice(0, 2).toUpperCase();
+function artFor(symbolId: string) {
+  return SYMBOL_ART.get(symbolId) ?? UNKNOWN_SYMBOL;
 }
 
 /** Symbols shown while a reel is still turning. */
@@ -221,7 +228,9 @@ export default function SlotReelPanel({
                           : 'border-surface-600 bg-surface-850'
                       } ${stopped ? '' : 'opacity-70 blur-[1px]'}`}
                     >
-                      <span aria-hidden="true">{artFor(symbolId)}</span>
+                      <span aria-hidden="true" className="h-[72%] w-[72%]">
+                        <SlotSymbol {...artFor(symbolId)} />
+                      </span>
                       <span className="sr-only">{symbolId}</span>
                     </div>
                   );

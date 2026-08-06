@@ -10,7 +10,7 @@
 
 import type { AvatarAppearance, BingoPlayerSummary } from '@bingo/shared';
 import type { CharacterPersonality } from '../ProceduralCharacter';
-import { assignSeats, freeSeats, type SeatPlacement } from './hallLayout';
+import { SEATS, assignSeats, freeSeats, type SeatPlacement } from './hallLayout';
 
 export type OccupantKind = 'PLAYER' | 'NPC' | 'AMBIENT';
 
@@ -118,6 +118,16 @@ export interface OccupancyOptions {
   readonly ambientCount: number;
   /** Seed so the same room always produces the same faces. */
   readonly roomSeed: string;
+  /**
+   * The seat the *server* says the local player is in, or null while standing.
+   *
+   * This module used to hand the local player a chair of its own choosing,
+   * which was defensible when no one owned seating and is wrong now that the
+   * room does: it meant a player was seated the instant they walked in, at a
+   * table nobody had picked, with the camera starting in the middle of the
+   * hall rather than at the door.
+   */
+  readonly mySeatId?: string | null;
 }
 
 export interface HallOccupancy {
@@ -141,7 +151,12 @@ export function buildOccupancy(
   const taken = new Set<string>();
 
   for (const player of players) {
-    const seat = seatAssignment.get(player.sessionId);
+    const isLocal = player.sessionId === mySessionId;
+    // A standing player has no chair to draw them in.
+    if (isLocal && options.mySeatId === null) continue;
+    const seat = isLocal && options.mySeatId
+      ? (SEATS.find((entry) => entry.id === options.mySeatId) ?? seatAssignment.get(player.sessionId))
+      : seatAssignment.get(player.sessionId);
     if (!seat) continue;
     taken.add(seat.id);
     occupants.push({
@@ -154,7 +169,7 @@ export function buildOccupancy(
       ready: player.ready,
       cardCount: player.cardCount,
       isHost: player.isHost,
-      isLocal: player.sessionId === mySessionId,
+      isLocal,
       phase: (stableHash(player.sessionId) % 1000) / 1000,
     });
   }

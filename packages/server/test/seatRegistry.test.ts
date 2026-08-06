@@ -5,6 +5,7 @@ import {
   MAX_RESERVATIONS_PER_PLAYER,
   SEAT_HOLD_ON_DISCONNECT_MS,
   SEAT_RESERVATION_MS,
+  SEAT_RING_RADIUS,
   SeatRegistry,
   findSeat,
   seatsOfTable,
@@ -210,7 +211,9 @@ describe('the hall itself', () => {
   it('places every seat on its table ring', () => {
     for (const seat of HALL_SEATS) {
       const table = HALL_TABLES[seat.tableIndex]!;
-      expect(Math.hypot(seat.x - table.x, seat.z - table.z)).toBeCloseTo(1.78, 6);
+      // Bound to the constant rather than a literal: a hall that is resized
+      // must not need its tests edited to keep passing.
+      expect(Math.hypot(seat.x - table.x, seat.z - table.z)).toBeCloseTo(SEAT_RING_RADIUS, 6);
     }
   });
 

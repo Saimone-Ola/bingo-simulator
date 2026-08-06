@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type {
@@ -23,7 +23,10 @@ import PlayerMovementController, {
 } from './bingo/PlayerMovementController';
 import { crowdAnimation, moodFor } from './bingo/eventChoreography';
 import { buildOccupancy } from './bingo/occupants';
-import { TABLES, TABLE_TOP_HEIGHT } from './bingo/hallLayout';
+import CrowdInstances from './bingo/CrowdInstances';
+import InstancedFurniture from './bingo/InstancedFurniture';
+import { budgetFor, selectCrowdTiers } from './bingo/crowdLod';
+import { SEATS, SPAWN, STANDING_EYE_HEIGHT, TABLES, TABLE_TOP_HEIGHT } from './bingo/hallLayout';
 import { DECK_RADIUS } from './bingo/cardLayout';
 import type { PlayerStance } from './bingo/movement';
 import { RENDER_PROFILES, type HallQuality } from '../store/hallSettings';
@@ -52,6 +55,8 @@ export interface BingoRoomSceneProps {
   maxPlayers: number;
   players: readonly BingoPlayerSummary[];
   mySessionId: string;
+  /** Seat the server put this player in, or null while they are standing. */
+  mySeatId: string | null;
   myCards: readonly ItalianBingoCard[];
   currentNumber: number | null;
   drawnNumbers: readonly number[];
@@ -239,8 +244,9 @@ function Scene(props: BingoRoomSceneProps) {
       buildOccupancy([...players], mySessionId, {
         ambientCount: props.ambientGuests,
         roomSeed: props.roomCode,
+        mySeatId: props.mySeatId,
       }),
-    [players, mySessionId, props.ambientGuests, props.roomCode],
+    [players, mySessionId, props.ambientGuests, props.roomCode, props.mySeatId],
   );
 
   const me = useMemo(
@@ -274,6 +280,70 @@ function Scene(props: BingoRoomSceneProps) {
     if (phase === 'CARD_PURCHASE') return 'Acquista le cartelle alla cassa';
     return `${drawnNumbers.length} / 90 estratti`;
   }, [props.countdownSeconds, mood.caption, phase, drawnNumbers.length]);
+
+  // Where the tiering is centred. Updated only when the player has moved far
+  // enough to change who is near, which is a few metres rather than a frame.
+  const crowdOrigin = useCrowdOrigin();
+
+  /**
+   * The crowd, split by distance around the player.
+   *
+   * Recomputed when the player moves far enough to matter rather than every
+   * frame: re-tiering five hundred guests sixty times a second would cost more
+   * than the drawing it is saving.
+   */
+  const crowdTiers = useMemo(() => {
+    const candidates = occupancy.occupants
+      .filter((occupant) => !occupant.isLocal)
+      .map((occupant) => ({ id: occupant.id, x: occupant.seat.x, z: occupant.seat.z }));
+    return selectCrowdTiers(candidates, crowdOrigin[0], crowdOrigin[1], budgetFor(props.quality));
+  }, [occupancy.occupants, crowdOrigin, props.quality]);
+
+  const byId = useMemo(
+    () => new Map(occupancy.occupants.map((occupant) => [occupant.id, occupant])),
+    [occupancy.occupants],
+  );
+  const nearCrowd = useMemo(
+    () => crowdTiers.full.map((entry) => byId.get(entry.id)).filter((o) => o !== undefined),
+    [crowdTiers, byId],
+  );
+  const farCrowd = useMemo(
+    () =>
+      [...crowdTiers.simple, ...crowdTiers.instanced]
+        .map((entry) => byId.get(entry.id))
+        .filter((occupant) => occupant !== undefined)
+        .map((occupant) => ({
+          id: occupant.id,
+          seat: occupant.seat,
+          shirtColor: occupant.appearance.shirtColor ?? '#7357bd',
+          skinTone: occupant.appearance.skinTone ?? '#e0b49a',
+          phase: occupant.phase,
+        })),
+    [crowdTiers, byId],
+  );
+
+  /**
+   * Furniture near enough for its detail to survive perspective.
+   *
+   * A detailed chair is ten meshes and a table thirty-six; at 512 and 64 that
+   * is ~7 400 draw calls of furniture, several times the crowd. Past a few
+   * metres none of that detail reads, so only the near ones are drawn in full
+   * and everything else becomes four instanced meshes.
+   */
+  const furniture = useMemo(() => {
+    const [ox, oz] = crowdOrigin;
+    const nearSq = FURNITURE_DETAIL_RADIUS * FURNITURE_DETAIL_RADIUS;
+    const within = (x: number, z: number) => (x - ox) ** 2 + (z - oz) ** 2 <= nearSq;
+
+    const nearTables = TABLES.filter((table) => within(table.x, table.z));
+    const nearTableIndices = new Set(nearTables.map((table) => table.index));
+    return {
+      nearTables,
+      farTables: TABLES.filter((table) => !nearTableIndices.has(table.index)),
+      nearSeats: SEATS.filter((seat) => nearTableIndices.has(seat.tableIndex)),
+      farSeats: SEATS.filter((seat) => !nearTableIndices.has(seat.tableIndex)),
+    };
+  }, [crowdOrigin]);
 
   const localSeat = occupancy.localSeat;
   const seatedTable = localSeat ? TABLES[localSeat.tableIndex] : undefined;
@@ -335,24 +405,30 @@ function Scene(props: BingoRoomSceneProps) {
         onActivate={() => props.onInteract('RECEPTION')}
       />
 
-      {TABLES.map((table) => (
+      {furniture.nearTables.map((table) => (
         <RoundBingoTable key={table.index} table={table} quality={quality === 'LOW' ? 'LOW' : 'FULL'} shadows={shadows} />
       ))}
 
       {/* Chairs are drawn from the seat list, so a chair always matches a
-          collider and a character always matches a chair. */}
-      {occupancy.occupants.map((occupant) => (
+          collider and a character always matches a chair. Only the near ones
+          are drawn in detail; the rest arrive as instances below. */}
+      {furniture.nearSeats.map((seat) => (
         <BingoChair
-          key={`chair-${occupant.seat.id}`}
-          seat={occupant.seat}
-          occupied={occupant.isLocal}
+          key={`chair-${seat.id}`}
+          seat={seat}
+          occupied={seat.id === occupancy.localSeat?.id}
           castShadow={shadows}
         />
       ))}
 
-      {occupancy.occupants
-        .filter((occupant) => !occupant.isLocal)
-        .map((occupant) => {
+      <InstancedFurniture tables={furniture.farTables} seats={furniture.farSeats} />
+
+      {/*
+        Only the near crowd is drawn as characters. The rest becomes simple
+        silhouettes and then instances — see crowdLod.ts for why, and for the
+        budgets each graphics setting spends.
+      */}
+      {nearCrowd.map((occupant) => {
           const state: CharacterAnimationState = crowdAnimation(
             Math.round(occupant.phase * 997),
             beat,
@@ -373,6 +449,8 @@ function Scene(props: BingoRoomSceneProps) {
             />
           );
         })}
+
+      <CrowdInstances guests={farCrowd} />
 
       {quality !== 'LOW' && (
         <WanderingWaiter reducedMotion={reducedMotion} paused={phase === 'COUNTDOWN'} />
@@ -417,6 +495,33 @@ function Scene(props: BingoRoomSceneProps) {
   );
 }
 
+/**
+ * The player's position, sampled coarsely.
+ *
+ * Re-tiering five hundred guests every frame would cost more than the drawing
+ * it saves, and the tiers only change when the player has actually walked
+ * somewhere — so this only publishes a new origin past a threshold.
+ */
+const CROWD_RESAMPLE_DISTANCE = 4;
+
+/** How far detailed tables and chairs are drawn. Two table pitches. */
+const FURNITURE_DETAIL_RADIUS = 12;
+
+function useCrowdOrigin(): readonly [number, number] {
+  const [origin, setOrigin] = useState<readonly [number, number]>([SPAWN.x, SPAWN.z]);
+  const last = useRef<readonly [number, number]>([SPAWN.x, SPAWN.z]);
+
+  useFrame(({ camera }) => {
+    const dx = camera.position.x - last.current[0];
+    const dz = camera.position.z - last.current[1];
+    if (dx * dx + dz * dz < CROWD_RESAMPLE_DISTANCE * CROWD_RESAMPLE_DISTANCE) return;
+    last.current = [camera.position.x, camera.position.z];
+    setOrigin(last.current);
+  });
+
+  return origin;
+}
+
 export default function BingoRoomScene(props: BingoRoomSceneProps) {
   const profile = RENDER_PROFILES[props.quality];
   return (
@@ -424,7 +529,10 @@ export default function BingoRoomScene(props: BingoRoomSceneProps) {
       <Canvas
         shadows={props.shadows}
         dpr={[profile.dpr[0], profile.dpr[1]]}
-        camera={{ position: [0, 1.62, 8], fov: 62, near: 0.06, far: 60 }}
+        // Starts where the player actually spawns. A literal here was fine in a
+        // small room and puts the camera in the middle of the tables in a large
+        // one — the hall grew and this did not.
+        camera={{ position: [SPAWN.x, STANDING_EYE_HEIGHT, SPAWN.z], fov: 62, near: 0.06, far: 90 }}
         gl={{ antialias: profile.antialias, powerPreference: 'high-performance' }}
         performance={{ min: 0.45 }}
         onCreated={({ gl }) => {
