@@ -1,6 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import SeatMap from '../components/SeatMap';
+import SestinaGrid from '../components/SestinaGrid';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  SEAT_REJECTION_REASONS,
+  SESTINA_CARD_COUNT,
   normaliseBingoRoomCode,
   type BingoActionRejectedPayload,
   type BingoClaimRejectedPayload,
@@ -9,6 +13,7 @@ import {
   type BingoSnapshotPayload,
   type BingoWinnerPayload,
   type RoomBingoConfig,
+  type SeatOccupancy,
 } from '@bingo/shared';
 import { ResponsiblePlayNotice } from '../components/ui';
 import BingoContextHud, {
@@ -37,10 +42,13 @@ import {
   claimBingo,
   connectToBingo,
   leaveBingo,
+  leaveBingoSeat,
   markBingoCell,
   purchaseBingoCards,
+  reserveBingoSeat,
   setBingoReady,
   startBingoGame,
+  takeBingoSeat,
   updateBingoConfig,
   type BingoConnectionStatus,
 } from '../net/bingoConnection';
@@ -93,7 +101,7 @@ const ACTION_REJECTION: Record<BingoActionRejectedPayload['reason'], string> = {
   configuration_locked: 'Le impostazioni sono bloccate durante la partita.',
 };
 
-type OpenPanel = 'NONE' | 'PURCHASE' | 'HOST' | 'SETTINGS';
+type OpenPanel = 'NONE' | 'PURCHASE' | 'HOST' | 'SETTINGS' | 'SEATS';
 
 export default function BingoPage() {
   const navigate = useNavigate();
@@ -119,6 +127,13 @@ export default function BingoPage() {
   const [hostConfig, setHostConfig] = useState<RoomBingoConfig>(EMPTY_CONFIG);
   const [copied, setCopied] = useState(false);
   const [panel, setPanel] = useState<OpenPanel>('NONE');
+  // Seating is authoritative and arrives on its own message, so it lives beside
+  // the snapshot rather than inside it: seats change far more often than cards.
+  const [seating, setSeating] = useState<readonly SeatOccupancy[]>([]);
+  const [reservations, setReservations] = useState<
+    readonly { seatId: string; holderId: string; expiresAt: number }[]
+  >([]);
+  const [seatError, setSeatError] = useState<string | null>(null);
   const [stance, setStance] = useState<PlayerStance>('STANDING');
   const [interaction, setInteraction] = useState<InteractionTarget>(null);
   const [focusCard, setFocusCard] = useState(false);
@@ -174,9 +189,20 @@ export default function BingoPage() {
 
     void connectToBingo(accessToken, roomCode, {
       onStatus: (next) => active && setStatus(next),
+      onSeating: (payload) => {
+        if (!active) return;
+        setSeating(payload.seating);
+        setReservations(payload.reservations);
+      },
+      onSeatRejected: (payload) => {
+        if (!active) return;
+        setSeatError(SEAT_REJECTION_REASONS[payload.reason]);
+      },
       onSnapshot: (next) => {
         if (!active) return;
         setSnapshot(next);
+        setSeating(next.seating);
+        setReservations(next.reservations);
         setHostConfig(next.config);
         setSelectedCard((current) => Math.min(current, Math.max(0, next.myCards.length - 1)));
         if (next.phase === 'CARD_PURCHASE') setWinner(null);
@@ -487,6 +513,20 @@ export default function BingoPage() {
             onToggle={() => setRosterOpen((value) => !value)}
           />
 
+          {/* Seat picker. Available whenever the round has not started, which
+              is exactly when changing seats is harmless. */}
+          {(phase === 'WAITING' || phase === 'CARD_PURCHASE') && (
+            <div className="pointer-events-auto absolute left-3 top-24 z-20">
+              <button
+                type="button"
+                onClick={() => setPanel('SEATS')}
+                className="rounded-lg border border-surface-500 bg-surface-900/80 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-content-secondary backdrop-blur transition-colors hover:border-brand-400 hover:text-content-primary"
+              >
+                {snapshot.mySeatId ? 'Cambia posto' : 'Scegli il posto'}
+              </button>
+            </div>
+          )}
+
           {/* Preparation happens in the room: a strip above the HUD, not a page. */}
           {phase === 'CARD_PURCHASE' && (
             <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center px-3">
@@ -587,6 +627,51 @@ export default function BingoPage() {
               onMode={setMode}
               onConfirm={confirmPurchase}
               onClose={() => setPanel('NONE')}
+            />
+          )}
+          {snapshot.myCards.length === SESTINA_CARD_COUNT && phase === 'PLAYING' && (
+            <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-[46vh] overflow-y-auto border-t border-surface-600/70 bg-surface-950/92 p-3 backdrop-blur-xl">
+              <SestinaGrid
+                cards={snapshot.myCards}
+                drawnNumbers={snapshot.drawnNumbers}
+                markedByCard={snapshot.myCards.map((card) => card.markedIndices)}
+                markStyle="CROSS"
+                markColor={markerColor}
+                onToggleCell={(cardIndex, cellIndex) =>
+                  markBingoCell(
+                    snapshot.round,
+                    cardIndex,
+                    cellIndex,
+                    !snapshot.myCards[cardIndex]?.markedIndices.includes(cellIndex),
+                  )
+                }
+              />
+            </div>
+          )}
+
+          {panel === 'SEATS' && (
+            <SeatMap
+              seating={seating}
+              reservations={reservations}
+              mySeatId={snapshot.mySeatId}
+              myUserId={me?.userId ?? null}
+              error={seatError}
+              onTake={(seatId) => {
+                setSeatError(null);
+                takeBingoSeat(seatId);
+              }}
+              onLeave={() => {
+                setSeatError(null);
+                leaveBingoSeat();
+              }}
+              onReserve={(seatId) => {
+                setSeatError(null);
+                reserveBingoSeat(seatId);
+              }}
+              onClose={() => {
+                setSeatError(null);
+                setPanel('NONE');
+              }}
             />
           )}
           {panel === 'HOST' && (
