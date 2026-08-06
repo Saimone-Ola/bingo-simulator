@@ -70,46 +70,86 @@ export const TABLE_TOP_HEIGHT = 0.78;
 export const STANDING_EYE_HEIGHT = 1.62;
 export const SEATED_EYE_HEIGHT = 1.26;
 
+/**
+ * Walkable floor.
+ *
+ * Derived from where the chairs actually are rather than typed in, so the room
+ * cannot fall out of step with a grid that grew. Sixty-four tables of eight need
+ * a hall roughly forty-five metres across, which is the size a real Bingo hall
+ * is — and the reason the old forty-seat room read as a meeting room with a
+ * stage in it.
+ */
+const SEAT_EXTENT = {
+  x: Math.max(...HALL_SEATS.map((seat) => Math.abs(seat.x))),
+  minZ: Math.min(...HALL_SEATS.map((seat) => seat.z)),
+  maxZ: Math.max(...HALL_SEATS.map((seat) => seat.z)),
+};
+
+/** Room to walk round the outer chairs. */
+const PERIMETER = 2.6;
+
+/**
+ * Foyer between the back row and the doors.
+ *
+ * Without it a player spawns pressed against the last table and sees a chair
+ * back instead of a hall. An entrance needs depth to be an entrance.
+ */
+const ENTRANCE_DEPTH = 7.5;
+
 export const HALL_BOUNDS: HallBounds = {
-  minX: -10.1,
-  maxX: 10.1,
-  minZ: -7.9,
-  maxZ: 9.2,
+  minX: -(SEAT_EXTENT.x + PERIMETER),
+  maxX: SEAT_EXTENT.x + PERIMETER,
+  minZ: SEAT_EXTENT.minZ - PERIMETER,
+  maxZ: SEAT_EXTENT.maxZ + PERIMETER + ENTRANCE_DEPTH,
 };
 
 /** Walls are drawn slightly outside the walkable bounds so they read as solid. */
 export const HALL_SHELL = {
-  minX: -10.7,
-  maxX: 10.7,
-  minZ: -12.7,
-  maxZ: 9.9,
-  wallHeight: 6.4,
-  ceilingHeight: 6.1,
+  minX: HALL_BOUNDS.minX - 0.6,
+  maxX: HALL_BOUNDS.maxX + 0.6,
+  // The stage lives beyond the front wall line, so the shell reaches past it.
+  minZ: HALL_BOUNDS.minZ - 6.4,
+  maxZ: HALL_BOUNDS.maxZ + 0.7,
+  // A hall this wide needs the height to match, or it reads as a car park.
+  wallHeight: 9.2,
+  ceilingHeight: 8.8,
 } as const;
+
+/** Stage: wide enough to be seen from the back of a forty-metre room. */
+const STAGE_FRONT_Z = HALL_BOUNDS.minZ - 0.4;
 
 export const STAGE = {
-  minX: -6.8,
-  maxX: 6.8,
-  minZ: -12.4,
-  maxZ: -8.0,
-  height: 0.62,
+  minX: -9.5,
+  maxX: 9.5,
+  minZ: STAGE_FRONT_Z - 5.2,
+  maxZ: STAGE_FRONT_Z,
+  height: 0.9,
   /** Where the presenter stands, on top of the platform. */
-  hostX: 1.7,
-  hostZ: -9.5,
+  hostX: 2.4,
+  hostZ: STAGE_FRONT_Z - 2.0,
   /** Centre of the ball machine. */
-  urnX: -2.0,
-  urnZ: -9.6,
+  urnX: -2.8,
+  urnZ: STAGE_FRONT_Z - 2.1,
 } as const;
 
+/**
+ * Reception and spawn sit at the entrance, which is the far end from the stage.
+ *
+ * They used to be typed in at z ≈ 8.5, which was the back of a small hall and
+ * is the middle of a large one — the desk ended up standing among the tables.
+ * Derived from the bounds, they follow the room whatever size it is.
+ */
+const ENTRANCE_Z = HALL_BOUNDS.maxZ - 1.6;
+
 export const RECEPTION = {
-  x: 4.6,
-  z: 8.7,
+  x: 6.2,
+  z: ENTRANCE_Z,
   width: 3.6,
   depth: 0.95,
   height: 1.08,
   /** Point in front of the desk that triggers the purchase interaction. */
-  approachX: 4.6,
-  approachZ: 7.8,
+  approachX: 6.2,
+  approachZ: ENTRANCE_Z - 0.9,
   radius: 2.0,
 } as const;
 
@@ -120,7 +160,8 @@ export const ENTRANCE = {
 } as const;
 
 /** Where a player is dropped the first time they enter the hall. */
-export const SPAWN = { x: 0.2, z: 8.5, yaw: -0.42 } as const;
+/** Dropped just inside the entrance, facing the stage down the centre aisle. */
+export const SPAWN = { x: 0, z: HALL_BOUNDS.maxZ - 3.4, yaw: 0 } as const;
 
 /**
  * Tables and seats come from `@bingo/shared`.

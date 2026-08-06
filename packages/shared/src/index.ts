@@ -8,6 +8,7 @@ export * from './world';
 export * from './avatarMotion';
 export * from './bingoSeating';
 export * from './seatRegistry';
+export * from './hallPopulation';
 export * from './prizePool';
 export * from './sestina';
 export * from './protocol';

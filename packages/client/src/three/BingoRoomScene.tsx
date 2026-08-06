@@ -23,7 +23,7 @@ import PlayerMovementController, {
 } from './bingo/PlayerMovementController';
 import { crowdAnimation, moodFor } from './bingo/eventChoreography';
 import { buildOccupancy } from './bingo/occupants';
-import { TABLES, TABLE_TOP_HEIGHT } from './bingo/hallLayout';
+import { SPAWN, STANDING_EYE_HEIGHT, TABLES, TABLE_TOP_HEIGHT } from './bingo/hallLayout';
 import { DECK_RADIUS } from './bingo/cardLayout';
 import type { PlayerStance } from './bingo/movement';
 import { RENDER_PROFILES, type HallQuality } from '../store/hallSettings';
@@ -424,7 +424,10 @@ export default function BingoRoomScene(props: BingoRoomSceneProps) {
       <Canvas
         shadows={props.shadows}
         dpr={[profile.dpr[0], profile.dpr[1]]}
-        camera={{ position: [0, 1.62, 8], fov: 62, near: 0.06, far: 60 }}
+        // Starts where the player actually spawns. A literal here was fine in a
+        // small room and puts the camera in the middle of the tables in a large
+        // one — the hall grew and this did not.
+        camera={{ position: [SPAWN.x, STANDING_EYE_HEIGHT, SPAWN.z], fov: 62, near: 0.06, far: 90 }}
         gl={{ antialias: profile.antialias, powerPreference: 'high-performance' }}
         performance={{ min: 0.45 }}
         onCreated={({ gl }) => {

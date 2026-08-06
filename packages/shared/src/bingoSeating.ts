@@ -11,11 +11,36 @@
  * the occupancy stays on the server. All three agree on the id.
  */
 
-export const TABLE_COLUMNS = [-6.4, 0, 6.4] as const;
-export const TABLE_ROWS = [-4.9, 0.3, 5.4] as const;
+/**
+ * Size of the hall.
+ *
+ * A real Bingo hall seats hundreds, and a room that seats forty reads as a
+ * meeting room with a stage in it. Sixty-four tables of eight is 512 seats —
+ * past the 500 the brief asks for, and a grid rather than a scatter because a
+ * hall of this size has to be navigable: you find your table by counting rows.
+ *
+ * Everything downstream is derived, so changing these three numbers resizes the
+ * room, the collision set, the seat registry and the overhead map together.
+ */
+export const TABLE_GRID_COLUMNS = 8;
+export const TABLE_GRID_ROWS = 8;
+export const SEATS_PER_TABLE = 8;
+
+/** Centre-to-centre spacing. Wide enough to walk between two full tables. */
+export const TABLE_PITCH_X = 5.9;
+export const TABLE_PITCH_Z = 5.7;
 
 /** Distance from a table's centre to the ring its chairs sit on. */
-export const SEAT_RING_RADIUS = 1.78;
+export const SEAT_RING_RADIUS = 2.05;
+
+function axis(count: number, pitch: number, offset: number): number[] {
+  const span = (count - 1) * pitch;
+  return Array.from({ length: count }, (_value, index) => index * pitch - span / 2 + offset);
+}
+
+export const TABLE_COLUMNS: readonly number[] = axis(TABLE_GRID_COLUMNS, TABLE_PITCH_X, 0);
+// Offset towards the entrance so the stage has room in front of the first row.
+export const TABLE_ROWS: readonly number[] = axis(TABLE_GRID_ROWS, TABLE_PITCH_Z, 3.4);
 
 /**
  * What a table is like to sit at.
@@ -60,10 +85,12 @@ export interface HallSeat {
 }
 
 function characterFor(x: number, z: number): TableCharacter {
-  // The stage is at negative Z, so the front row is closest to the caller.
-  if (z < -3) return 'STAGE_SIDE';
-  if (z > 3) return 'BACK';
-  return x === 0 ? 'CENTRE' : 'CORNER';
+  // The stage is at negative Z, so the front rows are closest to the caller.
+  const frontThird = TABLE_ROWS[Math.floor(TABLE_GRID_ROWS / 3)] ?? 0;
+  const backThird = TABLE_ROWS[Math.floor((TABLE_GRID_ROWS * 2) / 3)] ?? 0;
+  if (z <= frontThird) return 'STAGE_SIDE';
+  if (z >= backThird) return 'BACK';
+  return Math.abs(x) < TABLE_PITCH_X ? 'CENTRE' : 'CORNER';
 }
 
 function buildTables(): readonly HallTable[] {
@@ -74,9 +101,7 @@ function buildTables(): readonly HallTable[] {
         index: tables.length,
         x,
         z,
-        // The centre aisle gets the large six-seater tables; they read as the
-        // "good" tables from the entrance and give the hall a focal column.
-        seatCount: x === 0 ? 6 : 4,
+        seatCount: SEATS_PER_TABLE,
         label: tables.length + 1,
         character: characterFor(x, z),
       });
