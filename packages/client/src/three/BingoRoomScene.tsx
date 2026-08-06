@@ -24,8 +24,9 @@ import PlayerMovementController, {
 import { crowdAnimation, moodFor } from './bingo/eventChoreography';
 import { buildOccupancy } from './bingo/occupants';
 import CrowdInstances from './bingo/CrowdInstances';
+import InstancedFurniture from './bingo/InstancedFurniture';
 import { budgetFor, selectCrowdTiers } from './bingo/crowdLod';
-import { SPAWN, STANDING_EYE_HEIGHT, TABLES, TABLE_TOP_HEIGHT } from './bingo/hallLayout';
+import { SEATS, SPAWN, STANDING_EYE_HEIGHT, TABLES, TABLE_TOP_HEIGHT } from './bingo/hallLayout';
 import { DECK_RADIUS } from './bingo/cardLayout';
 import type { PlayerStance } from './bingo/movement';
 import { RENDER_PROFILES, type HallQuality } from '../store/hallSettings';
@@ -321,6 +322,29 @@ function Scene(props: BingoRoomSceneProps) {
     [crowdTiers, byId],
   );
 
+  /**
+   * Furniture near enough for its detail to survive perspective.
+   *
+   * A detailed chair is ten meshes and a table thirty-six; at 512 and 64 that
+   * is ~7 400 draw calls of furniture, several times the crowd. Past a few
+   * metres none of that detail reads, so only the near ones are drawn in full
+   * and everything else becomes four instanced meshes.
+   */
+  const furniture = useMemo(() => {
+    const [ox, oz] = crowdOrigin;
+    const nearSq = FURNITURE_DETAIL_RADIUS * FURNITURE_DETAIL_RADIUS;
+    const within = (x: number, z: number) => (x - ox) ** 2 + (z - oz) ** 2 <= nearSq;
+
+    const nearTables = TABLES.filter((table) => within(table.x, table.z));
+    const nearTableIndices = new Set(nearTables.map((table) => table.index));
+    return {
+      nearTables,
+      farTables: TABLES.filter((table) => !nearTableIndices.has(table.index)),
+      nearSeats: SEATS.filter((seat) => nearTableIndices.has(seat.tableIndex)),
+      farSeats: SEATS.filter((seat) => !nearTableIndices.has(seat.tableIndex)),
+    };
+  }, [crowdOrigin]);
+
   const localSeat = occupancy.localSeat;
   const seatedTable = localSeat ? TABLES[localSeat.tableIndex] : undefined;
   const deckOrigin = useMemo(() => {
@@ -381,20 +405,23 @@ function Scene(props: BingoRoomSceneProps) {
         onActivate={() => props.onInteract('RECEPTION')}
       />
 
-      {TABLES.map((table) => (
+      {furniture.nearTables.map((table) => (
         <RoundBingoTable key={table.index} table={table} quality={quality === 'LOW' ? 'LOW' : 'FULL'} shadows={shadows} />
       ))}
 
       {/* Chairs are drawn from the seat list, so a chair always matches a
-          collider and a character always matches a chair. */}
-      {occupancy.occupants.map((occupant) => (
+          collider and a character always matches a chair. Only the near ones
+          are drawn in detail; the rest arrive as instances below. */}
+      {furniture.nearSeats.map((seat) => (
         <BingoChair
-          key={`chair-${occupant.seat.id}`}
-          seat={occupant.seat}
-          occupied={occupant.isLocal}
+          key={`chair-${seat.id}`}
+          seat={seat}
+          occupied={seat.id === occupancy.localSeat?.id}
           castShadow={shadows}
         />
       ))}
+
+      <InstancedFurniture tables={furniture.farTables} seats={furniture.farSeats} />
 
       {/*
         Only the near crowd is drawn as characters. The rest becomes simple
@@ -476,6 +503,9 @@ function Scene(props: BingoRoomSceneProps) {
  * somewhere — so this only publishes a new origin past a threshold.
  */
 const CROWD_RESAMPLE_DISTANCE = 4;
+
+/** How far detailed tables and chairs are drawn. Two table pitches. */
+const FURNITURE_DETAIL_RADIUS = 12;
 
 function useCrowdOrigin(): readonly [number, number] {
   const [origin, setOrigin] = useState<readonly [number, number]>([SPAWN.x, SPAWN.z]);
