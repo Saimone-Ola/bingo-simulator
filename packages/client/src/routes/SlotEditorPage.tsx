@@ -2,6 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CLASSIC_PAYLINES,
+  SLOT_THEMES,
+  SLOT_THEME_LABELS,
+  allLibrarySymbols,
+  suggestedWeights,
+  themeSymbols,
+  type SlotTheme,
   SLOT_PUBLISH_SIMULATION_SPINS,
   SLOT_VOLATILITIES,
   SLOT_VOLATILITY_LABELS,
@@ -29,6 +35,7 @@ import {
   togglePayline,
 } from '../lib/slotEditor';
 import { Badge, Button, Field, Panel } from '../components/ui';
+import SlotSymbol from '../components/SlotSymbol';
 
 /**
  * The slot editor.
@@ -46,14 +53,39 @@ import { Badge, Button, Field, Panel } from '../components/ui';
  * the stored configuration and refuses anything outside the window.
  */
 
-const SYMBOL_ART: Record<string, string> = {
-  cherry: '🍒',
-  lemon: '🍋',
-  bell: '🔔',
-  seven: '7️⃣',
-  wild: '🃏',
-  scatter: '⭐',
-};
+const SYMBOL_ART = new Map(allLibrarySymbols().map((entry) => [entry.id, entry] as const));
+const UNKNOWN_SYMBOL = { shape: 'circle' as const, color: '#8a80a8', accent: '#4a4266' };
+
+function artFor(symbolId: string) {
+  return SYMBOL_ART.get(symbolId) ?? UNKNOWN_SYMBOL;
+}
+
+/** Swaps the machine's symbol set for another theme's, keeping the maths. */
+function applyTheme(config: SlotConfig, theme: SlotTheme): SlotConfig {
+  const entries = themeSymbols(theme);
+  const weights = suggestedWeights(theme);
+  const previous = config.symbols;
+
+  const symbols = entries.map((entry, index) => ({
+    id: entry.id,
+    name: entry.name,
+    kind: entry.kind,
+    // Reuse the weights already tuned where the ranks line up, so switching
+    // theme restyles a machine instead of resetting the work done on it.
+    weights:
+      previous[index]?.weights.length === config.reels
+        ? [...previous[index]!.weights]
+        : Array.from({ length: config.reels }, () => weights[entry.id] ?? 10),
+  }));
+
+  const paytable: Record<string, Record<number, number>> = {};
+  entries.forEach((entry, index) => {
+    const old = previous[index];
+    paytable[entry.id] = old ? { ...(config.paytable[old.id] ?? {}) } : {};
+  });
+
+  return { ...config, symbols, paytable };
+}
 
 const SIMULATION_CHOICES = [10_000, 50_000, 200_000] as const;
 
@@ -308,6 +340,37 @@ export default function SlotEditorPage() {
                   mai con l’RTP.
                 </p>
               </div>
+
+              <div>
+                <p className="mb-2 text-2xs font-black uppercase tracking-[0.16em] text-content-muted">
+                  Tema dei simboli
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {SLOT_THEMES.map((theme) => (
+                    <button
+                      key={theme}
+                      type="button"
+                      onClick={() => edit(applyTheme(config, theme))}
+                      className="flex items-center gap-1.5 rounded-lg border border-surface-600 bg-surface-850 px-2.5 py-1.5 text-xs font-semibold text-content-secondary transition-colors hover:border-brand-400 hover:text-content-primary"
+                    >
+                      <span aria-hidden="true" className="flex gap-0.5">
+                        {themeSymbols(theme)
+                          .slice(0, 3)
+                          .map((entry) => (
+                            <span key={entry.id} className="inline-block h-4 w-4">
+                              <SlotSymbol shape={entry.shape} color={entry.color} accent={entry.accent} />
+                            </span>
+                          ))}
+                      </span>
+                      {SLOT_THEME_LABELS[theme]}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-2xs text-content-muted">
+                  Cambiare tema ridisegna i simboli e conserva pesi e tabella paga: è una
+                  riverniciatura, non un azzeramento del lavoro fatto.
+                </p>
+              </div>
             </Panel>
 
             {/* Reel strips */}
@@ -335,8 +398,8 @@ export default function SlotEditorPage() {
                     {stats.map((stat) => (
                       <tr key={stat.symbol.id} className="border-t border-surface-700/70">
                         <td className="py-1.5 pr-2">
-                          <span className="mr-1.5" aria-hidden="true">
-                            {SYMBOL_ART[stat.symbol.id] ?? '▫'}
+                          <span className="mr-1.5 inline-block h-4 w-4 align-[-3px]" aria-hidden="true">
+                            <SlotSymbol {...artFor(stat.symbol.id)} />
                           </span>
                           <span className="font-medium">{stat.symbol.name}</span>
                           {stat.symbol.kind !== 'normal' && (
@@ -392,8 +455,8 @@ export default function SlotEditorPage() {
                     {config.symbols.map((symbol) => (
                       <tr key={symbol.id} className="border-t border-surface-700/70">
                         <td className="py-1.5 pr-2">
-                          <span className="mr-1.5" aria-hidden="true">
-                            {SYMBOL_ART[symbol.id] ?? '▫'}
+                          <span className="mr-1.5 inline-block h-4 w-4 align-[-3px]" aria-hidden="true">
+                            <SlotSymbol {...artFor(symbol.id)} />
                           </span>
                           {symbol.name}
                         </td>

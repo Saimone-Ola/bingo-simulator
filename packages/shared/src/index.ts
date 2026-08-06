@@ -17,5 +17,6 @@ export * from './bingo';
 export * from './bingoEvents';
 export * from './slots';
 export * from './slotMechanics';
+export * from './slotSymbolLibrary';
 export * from './slotPresets';
 export * from './slotProtocol';
