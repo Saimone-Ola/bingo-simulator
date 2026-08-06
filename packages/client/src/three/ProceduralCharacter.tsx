@@ -138,10 +138,15 @@ function motionForState(
     next.rightLegX = -1.36;
     next.leftKneeX = 1.3;
     next.rightKneeX = 1.3;
-    next.leftArmX = -0.42;
-    next.rightArmX = -0.42;
-    next.leftElbowX = -0.62;
-    next.rightElbowX = -0.62;
+    // Forearms angle down and in, so they rest rather than project. A shallow
+    // elbow on a forward-rotated upper arm leaves the forearm sticking straight
+    // out, which is what made every seated guest read as a zombie.
+    next.leftArmX = -0.52;
+    next.rightArmX = -0.52;
+    next.leftArmZ = 0.1;
+    next.rightArmZ = -0.1;
+    next.leftElbowX = -1.15;
+    next.rightElbowX = -1.15;
   };
   if (seated) seat();
 

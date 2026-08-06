@@ -9,6 +9,8 @@ import {
   type BingoClaimRejectedPayload,
   type BingoClaimTier,
   type BingoMarkingMode,
+  type BingoSeatRejectedPayload,
+  type BingoSeatingPayload,
   type BingoSnapshotPayload,
   type BingoWinnerPayload,
   type RoomBingoConfig,
@@ -25,6 +27,9 @@ export interface BingoHandlers {
   onWinner: (payload: BingoWinnerPayload) => void;
   onClaimRejected: (payload: BingoClaimRejectedPayload) => void;
   onActionRejected: (payload: BingoActionRejectedPayload) => void;
+  /** Seating chart, sent on its own whenever anyone sits, stands or lapses. */
+  onSeating: (payload: BingoSeatingPayload) => void;
+  onSeatRejected: (payload: BingoSeatRejectedPayload) => void;
 }
 
 function endpoint(): string {
@@ -161,6 +166,8 @@ export async function connectToBingo(
     publishBingoEventSnapshot(payload);
     handlers.onSnapshot(payload);
   });
+  joined.onMessage(BINGO_SERVER_MESSAGES.seating, handlers.onSeating);
+  joined.onMessage(BINGO_SERVER_MESSAGES.seatRejected, handlers.onSeatRejected);
   joined.onMessage(BINGO_SERVER_MESSAGES.ballCalled, handlers.onBall);
   joined.onMessage(BINGO_SERVER_MESSAGES.winner, handlers.onWinner);
   joined.onMessage(BINGO_SERVER_MESSAGES.claimRejected, handlers.onClaimRejected);
@@ -240,6 +247,24 @@ export function claimBingo(round: number, tier: BingoClaimTier, cardIndex: numbe
     cardIndex,
     requestId: requestId('claim'),
   });
+}
+
+/* --- Seats. The server owns occupancy; these only ask. --- */
+
+export function takeBingoSeat(seatId: string): void {
+  sendBingoMessage(BINGO_CLIENT_MESSAGES.takeSeat, { seatId });
+}
+
+export function leaveBingoSeat(): void {
+  sendBingoMessage(BINGO_CLIENT_MESSAGES.leaveSeat, {});
+}
+
+export function reserveBingoSeat(seatId: string): void {
+  sendBingoMessage(BINGO_CLIENT_MESSAGES.reserveSeat, { seatId });
+}
+
+export function cancelBingoSeatReservation(seatId: string): void {
+  sendBingoMessage(BINGO_CLIENT_MESSAGES.cancelReservation, { seatId });
 }
 
 export async function leaveBingo(): Promise<void> {
