@@ -248,3 +248,31 @@ describe('the hall itself', () => {
     expect(registry.freeSeats(T0)).toHaveLength(before - 1);
   });
 });
+
+describe('coming back', () => {
+  /**
+   * `resume` existed and nothing called it, so a player who dropped and
+   * reconnected inside the hold window kept a chair marked disconnected — and
+   * the next expiry sweep took it off them while they were sitting in it.
+   */
+  it('gives the chair back to a player who reconnects, and stops the clock', () => {
+    const registry = new SeatRegistry();
+    const target = seatId(0);
+    registry.claim(target, 'alice', 'Alice', 'PLAYER', T0);
+    registry.hold('alice', T0);
+    registry.resume('alice');
+
+    const afterWindow = T0 + SEAT_HOLD_ON_DISCONNECT_MS + 1;
+    expect(registry.expire(afterWindow)).toEqual([]);
+    expect(registry.seatFor('alice')).toBe(target);
+    expect(registry.snapshot()[0]?.disconnected).toBe(false);
+  });
+
+  it('still evicts someone who never came back', () => {
+    // The guard for the guard: resume must not be a blanket amnesty.
+    const registry = new SeatRegistry();
+    registry.claim(seatId(0), 'alice', 'Alice', 'PLAYER', T0);
+    registry.hold('alice', T0);
+    expect(registry.expire(T0 + SEAT_HOLD_ON_DISCONNECT_MS + 1)).toEqual([seatId(0)]);
+  });
+});

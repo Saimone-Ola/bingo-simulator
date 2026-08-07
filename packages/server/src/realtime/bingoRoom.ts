@@ -231,7 +231,7 @@ export class BingoRoom extends Room {
         this.rejectSeat(client, '', 'not_seated');
         return;
       }
-      this.broadcastSeating();
+      this.seatChanged(client);
     });
 
     this.onMessage(BINGO_CLIENT_MESSAGES.reserveSeat, (client, payload: unknown) => {
@@ -333,6 +333,12 @@ export class BingoRoom extends Room {
 
     if (this.phases.phase === 'WAITING') this.phases.transition('CARD_PURCHASE');
     if (this.phases.phase === 'COUNTDOWN' && !preserved) this.cancelCountdown();
+    // Fill the hall before anyone looks at it. This used to run only on
+    // reconnect, so the very first player into a fresh room found 512 empty
+    // chairs — and once "are there enough players" started counting seated
+    // guests rather than a configured number, a lone host could never start a
+    // round at all.
+    this.seatNpcs();
     this.sendAllSnapshots();
     this.evaluateAutomaticStart();
   }
@@ -356,8 +362,9 @@ export class BingoRoom extends Room {
     if (!participant) return;
     participant.connected = true;
     participant.loading = false;
-    // Fill the room out with the NPCs before anyone looks at it, so a player
-    // arriving never sees a hall that populates itself a beat later.
+    // The seat was held, not released, while they were gone — claim it back or
+    // the hold lapses and they are evicted from a chair they never left.
+    this.seats.resume(participant.userId);
     this.seatNpcs();
     this.sendAllSnapshots();
   }
@@ -471,7 +478,20 @@ export class BingoRoom extends Room {
       this.rejectSeat(client, seatId, result.reason);
       return;
     }
+    this.seatChanged(client);
+  }
+
+  /**
+   * Publishes a seat change.
+   *
+   * Everyone needs the chart; the player who moved also needs a snapshot,
+   * because `mySeatId` lives there and it is what tells their client they are
+   * now sitting down. Broadcasting the chart alone left the person who pressed
+   * the key standing in their own view while everyone else watched them sit.
+   */
+  private seatChanged(client: Client): void {
     this.broadcastSeating();
+    this.sendSnapshot(client);
   }
 
   /**
@@ -521,11 +541,18 @@ export class BingoRoom extends Room {
   private seatNpcs(): void {
     const now = Date.now();
     const humans = this.participants.size;
-    const crowd = crowdFor(`${this.seed}:${this.round}`, new Date(now), {
-      humans,
-      density: this.config.crowdDensity / DEFAULT_NPC_DENSITY,
-      maxNpcs: HALL_CAPACITY - humans,
-    });
+    // Turning the dial to zero has to empty the hall. `crowdFor` floors the
+    // occupancy at MIN_OCCUPANCY — an empty room looks broken, which is right
+    // for every other setting — so "no guests at all" is decided here, where
+    // the host's intent is known, rather than inside the curve.
+    const crowd =
+      this.config.crowdDensity === 0
+        ? { totalPresent: humans, npcCount: 0, npcCards: 0 }
+        : crowdFor(`${this.seed}:${this.round}`, new Date(now), {
+            humans,
+            density: this.config.crowdDensity / DEFAULT_NPC_DENSITY,
+            maxNpcs: HALL_CAPACITY - humans,
+          });
 
     // Guests who are no longer wanted give their chairs back before the rest
     // are seated, or a shrinking crowd would leave the hall permanently full.
@@ -535,13 +562,21 @@ export class BingoRoom extends Room {
       if (index === null || index >= crowd.npcCount) this.seats.release(row.occupantId);
     }
 
+    // The free list is taken once and walked, not recomputed per guest: asking
+    // for it inside the loop re-scans all 512 chairs and re-runs expiry on each
+    // of them, which measured 383 ms of blocked event loop for a crowd of 450.
+    // A round starting while the room is frozen for a third of a second is a
+    // room that drops its first number.
+    const free = this.seats.freeSeats(now);
+    // Guests take the back tables first, leaving the good seats for players.
+    let next = free.length - 1;
     for (let index = 0; index < crowd.npcCount; index += 1) {
       const id = this.npcId(index);
       if (this.seats.seatFor(id)) continue;
-      const free = this.seats.freeSeats(now);
-      // Guests take the back tables first, leaving the good seats for players.
-      const target = free[free.length - 1];
+      while (next >= 0 && !free[next]) next -= 1;
+      const target = free[next];
       if (!target) return;
+      next -= 1;
       this.seats.claim(target, id, this.npcName(index), 'NPC', now);
     }
   }
