@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   SLOT_RTP_MAX,
   SLOT_RTP_MIN,
+  SLOT_THEMES,
   SLOT_VOLATILITIES,
+  allLibrarySymbols,
   analyticLineRtp,
   compareSlotRtp,
   defaultSlotConfig,
@@ -13,6 +15,7 @@ import {
   slotConfigFingerprint,
   slotPreset,
   spinSlot,
+  themeSymbols,
   validateSlotConfig,
   type SlotConfig,
 } from '@bingo/shared';
@@ -370,5 +373,43 @@ describe('configuration fingerprint', () => {
     const edited = defaultSlotConfig();
     edited.paytable.seven = { 3: 999, 4: 999, 5: 999 };
     expect(slotConfigFingerprint(edited)).not.toBe(slotConfigFingerprint(defaultSlotConfig()));
+  });
+});
+
+describe('the symbol library', () => {
+  /**
+   * Ten themes each define a wild, a scatter, and often a crown or a bell.
+   * Anything that keys art or metadata by symbol id across the whole library —
+   * the editor and the reel panel both build such a map — kept one entry per
+   * *name* and let the last theme loaded win, so every machine drew the
+   * Christmas bow as its wild.
+   */
+  it('gives every symbol in every theme a distinct id', () => {
+    const ids = allLibrarySymbols().map((entry) => entry.id);
+    const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
+    expect([...new Set(duplicates)]).toEqual([]);
+  });
+
+  it('keeps a theme readable in its ids', () => {
+    for (const theme of SLOT_THEMES) {
+      for (const entry of themeSymbols(theme)) {
+        expect(entry.id, entry.name).toContain(theme.toLowerCase());
+      }
+    }
+  });
+
+  it('pays the preset symbols it actually ships', () => {
+    // A paytable keyed by an id no symbol carries pays nothing, and nothing is
+    // exactly what a machine whose ids and paytable drifted apart pays out.
+    for (const volatility of ['low', 'medium', 'high', 'extreme'] as const) {
+      const config = slotPreset(volatility);
+      const ids = new Set(config.symbols.map((symbol) => symbol.id));
+      for (const paid of Object.keys(config.paytable)) {
+        expect(ids.has(paid), `${volatility}: paytable pays for ${paid}`).toBe(true);
+      }
+      // And the machine still returns something, which a broken mapping would
+      // silently take to zero.
+      expect(analyticLineRtp(config)).toBeGreaterThan(0);
+    }
   });
 });

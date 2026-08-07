@@ -8,6 +8,7 @@
  */
 
 import type { SlotConfig, SlotSymbol, SlotVolatility } from './slots';
+import { themeSymbolId } from './slotSymbolLibrary';
 
 /** The five-reel, three-row layout every preset uses. */
 const REELS = 5;
@@ -31,15 +32,23 @@ export const CLASSIC_PAYLINES: number[][] = [
 ];
 
 /**
- * Deep copy of a paytable. Written out rather than using `structuredClone`,
- * which this package's ES2023 lib does not declare.
+ * Deep copy of a paytable, namespacing the keys as it goes.
+ *
+ * The tables below are written with short ids because `cherry: { 3: 2 }` is
+ * what a paytable should look like when you read it. The symbols they pay for
+ * carry the library's namespaced ids, and a paytable keyed by anything else
+ * pays nothing at all — so the two are brought together here, once, rather
+ * than by spelling `frutta:cherry` forty times.
+ *
+ * Written out rather than using `structuredClone`, which this package's ES2023
+ * lib does not declare.
  */
 function clonePaytable(
   paytable: Record<string, Record<number, number>>,
 ): Record<string, Record<number, number>> {
   const copy: Record<string, Record<number, number>> = {};
   for (const [symbolId, table] of Object.entries(paytable)) {
-    copy[symbolId] = { ...table };
+    copy[themeSymbolId('FRUTTA', symbolId)] = { ...table };
   }
   return copy;
 }
@@ -126,13 +135,19 @@ const SHAPES: Record<SlotVolatility, Shape> = {
   },
 };
 
+/**
+ * The preset symbol set, drawn from the fruit theme.
+ *
+ * The ids are the library's namespaced ones, so a preset machine renders with
+ * real art instead of the grey placeholder the art lookup falls back to.
+ */
 const SYMBOL_META: ReadonlyArray<[id: string, name: string, kind: SlotSymbol['kind']]> = [
-  ['cherry', 'Ciliegia', 'normal'],
-  ['lemon', 'Limone', 'normal'],
-  ['bell', 'Campana', 'normal'],
-  ['seven', 'Sette', 'normal'],
-  ['wild', 'Jolly', 'wild'],
-  ['scatter', 'Stella', 'scatter'],
+  [themeSymbolId('FRUTTA', 'cherry'), 'Ciliegia', 'normal'],
+  [themeSymbolId('FRUTTA', 'lemon'), 'Limone', 'normal'],
+  [themeSymbolId('FRUTTA', 'bell'), 'Campana', 'normal'],
+  [themeSymbolId('FRUTTA', 'seven'), 'Sette', 'normal'],
+  [themeSymbolId('FRUTTA', 'wild'), 'Jolly', 'wild'],
+  [themeSymbolId('FRUTTA', 'scatter'), 'Stella', 'scatter'],
 ];
 
 export function slotPreset(volatility: SlotVolatility): SlotConfig {

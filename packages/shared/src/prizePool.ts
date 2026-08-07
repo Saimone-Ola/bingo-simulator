@@ -15,22 +15,29 @@
 
 import type { Credits } from './credits';
 
-export const BINGO_PRIZE_TIERS = ['AMBO', 'TERNA', 'QUATERNA', 'CINQUINA', 'BINGO'] as const;
+/**
+ * The prizes this room pays.
+ *
+ * Cinquina and Bingo, and nothing else. The split used to name five tiers —
+ * ambo, terna and quaterna among them — while only these two could ever be
+ * claimed, so 28% of every pot was taken from the players, printed on the prize
+ * panel as if it were on offer, and then paid to nobody. A prize the game
+ * cannot award is not a prize; it is a second house edge with a misleading
+ * label on it.
+ *
+ * This is deliberately the same set as `BINGO_CLAIM_TIERS`: one concept, so a
+ * tier cannot be advertised without also being claimable.
+ */
+export const BINGO_PRIZE_TIERS = ['CINQUINA', 'BINGO'] as const;
 export type BingoPrizeTier = (typeof BINGO_PRIZE_TIERS)[number];
 
 export const BINGO_PRIZE_TIER_LABELS: Record<BingoPrizeTier, string> = {
-  AMBO: 'Ambo',
-  TERNA: 'Terna',
-  QUATERNA: 'Quaterna',
   CINQUINA: 'Cinquina',
   BINGO: 'Bingo',
 };
 
 /** Numbers needed on one line for each tier. */
 export const BINGO_TIER_MATCH_COUNT: Record<BingoPrizeTier, number> = {
-  AMBO: 2,
-  TERNA: 3,
-  QUATERNA: 4,
   CINQUINA: 5,
   BINGO: 15,
 };
@@ -38,12 +45,14 @@ export const BINGO_TIER_MATCH_COUNT: Record<BingoPrizeTier, number> = {
 /** Share of the distributed pot going to each tier. Must sum to 1. */
 export type PrizeSplit = Record<BingoPrizeTier, number>;
 
+/**
+ * Keeps the old relative weight of the two prizes that were ever paid — 0.20
+ * against 0.52 — renormalised so the whole distributed pot now reaches a
+ * player instead of 72% of it.
+ */
 export const DEFAULT_PRIZE_SPLIT: PrizeSplit = {
-  AMBO: 0.06,
-  TERNA: 0.09,
-  QUATERNA: 0.13,
-  CINQUINA: 0.2,
-  BINGO: 0.52,
+  CINQUINA: 0.28,
+  BINGO: 0.72,
 };
 
 export interface PrizePoolConfig {

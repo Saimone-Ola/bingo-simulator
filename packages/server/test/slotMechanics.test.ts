@@ -31,6 +31,20 @@ import {
 
 const base = slotPreset('medium');
 
+/**
+ * Symbol ids come from the configuration, not from literals.
+ *
+ * The library namespaces ids by theme, so a preset's cherry is
+ * `frutta:cherry`. A test that spells the bare name is asserting against a
+ * symbol the machine does not have, and every win silently becomes zero.
+ */
+const symbolId = (index: number): string => base.symbols[index]!.id;
+const CHERRY = symbolId(0);
+const LEMON = symbolId(1);
+const BELL = symbolId(2);
+const WILD = symbolId(4);
+const SCATTER = symbolId(5);
+
 /** Builds a grid from columns given top to bottom. */
 function grid(...columns: string[][]): string[][] {
   return columns;
@@ -46,13 +60,13 @@ describe('ways to win', () => {
   it('multiplies the positions on each consecutive reel', () => {
     // cherry on 2 positions, then 1, then 3: 6 ways over three reels.
     const board = grid(
-      ['cherry', 'cherry', 'lemon'],
-      ['cherry', 'bell', 'bell'],
-      ['cherry', 'cherry', 'cherry'],
-      ['lemon', 'lemon', 'lemon'],
-      ['bell', 'bell', 'bell'],
+      [CHERRY, CHERRY, LEMON],
+      [CHERRY, BELL, BELL],
+      [CHERRY, CHERRY, CHERRY],
+      [LEMON, LEMON, LEMON],
+      [BELL, BELL, BELL],
     );
-    const wins = evaluateWays(config, board, 10).filter((win) => win.symbolId === 'cherry');
+    const wins = evaluateWays(config, board, 10).filter((win) => win.symbolId === CHERRY);
     expect(wins).toHaveLength(1);
     expect(wins[0]!.reels).toBe(3);
     expect(wins[0]!.ways).toBe(2 * 1 * 3);
@@ -60,37 +74,37 @@ describe('ways to win', () => {
 
   it('stops at the first reel without the symbol', () => {
     const board = grid(
-      ['cherry', 'cherry', 'cherry'],
-      ['lemon', 'lemon', 'lemon'],
-      ['cherry', 'cherry', 'cherry'],
-      ['cherry', 'cherry', 'cherry'],
-      ['cherry', 'cherry', 'cherry'],
+      [CHERRY, CHERRY, CHERRY],
+      [LEMON, LEMON, LEMON],
+      [CHERRY, CHERRY, CHERRY],
+      [CHERRY, CHERRY, CHERRY],
+      [CHERRY, CHERRY, CHERRY],
     );
     // Broken at reel 2, so nothing pays however many follow.
-    expect(evaluateWays(config, board, 10).filter((w) => w.symbolId === 'cherry')).toHaveLength(0);
+    expect(evaluateWays(config, board, 10).filter((w) => w.symbolId === CHERRY)).toHaveLength(0);
   });
 
   it('lets wilds stand in', () => {
     const board = grid(
-      ['cherry', 'lemon', 'lemon'],
-      ['wild', 'lemon', 'lemon'],
-      ['cherry', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon'],
+      [CHERRY, LEMON, LEMON],
+      [WILD, LEMON, LEMON],
+      [CHERRY, LEMON, LEMON],
+      [LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON],
     );
-    const win = evaluateWays(config, board, 10).find((w) => w.symbolId === 'cherry');
+    const win = evaluateWays(config, board, 10).find((w) => w.symbolId === CHERRY);
     expect(win?.reels).toBe(3);
   });
 
   it('never pays a scatter as a way', () => {
     const board = grid(
-      ['scatter', 'scatter', 'scatter'],
-      ['scatter', 'scatter', 'scatter'],
-      ['scatter', 'scatter', 'scatter'],
-      ['scatter', 'scatter', 'scatter'],
-      ['scatter', 'scatter', 'scatter'],
+      [SCATTER, SCATTER, SCATTER],
+      [SCATTER, SCATTER, SCATTER],
+      [SCATTER, SCATTER, SCATTER],
+      [SCATTER, SCATTER, SCATTER],
+      [SCATTER, SCATTER, SCATTER],
     );
-    expect(evaluateWays(config, board, 10).some((w) => w.symbolId === 'scatter')).toBe(false);
+    expect(evaluateWays(config, board, 10).some((w) => w.symbolId === SCATTER)).toBe(false);
   });
 });
 
@@ -99,14 +113,14 @@ describe('cluster pays', () => {
 
   it('pays a group of touching symbols', () => {
     const board = grid(
-      ['cherry', 'cherry', 'lemon', 'lemon', 'lemon'],
-      ['cherry', 'cherry', 'lemon', 'lemon', 'lemon'],
-      ['cherry', 'bell', 'bell', 'bell', 'bell'],
-      ['bell', 'bell', 'bell', 'bell', 'bell'],
-      ['bell', 'bell', 'bell', 'bell', 'bell'],
+      [CHERRY, CHERRY, LEMON, LEMON, LEMON],
+      [CHERRY, CHERRY, LEMON, LEMON, LEMON],
+      [CHERRY, BELL, BELL, BELL, BELL],
+      [BELL, BELL, BELL, BELL, BELL],
+      [BELL, BELL, BELL, BELL, BELL],
     );
     const wins = evaluateCluster(config, board, 10);
-    const cherry = wins.find((win) => win.symbolId === 'cherry');
+    const cherry = wins.find((win) => win.symbolId === CHERRY);
     expect(cherry?.size).toBe(5);
   });
 
@@ -114,46 +128,46 @@ describe('cluster pays', () => {
     // Two cherries touching only at a corner are two clusters of one, and
     // neither reaches the minimum.
     const board = grid(
-      ['cherry', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'cherry', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
+      [CHERRY, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, CHERRY, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
     );
-    expect(evaluateCluster(config, board, 10).some((w) => w.symbolId === 'cherry')).toBe(false);
+    expect(evaluateCluster(config, board, 10).some((w) => w.symbolId === CHERRY)).toBe(false);
   });
 
   it('ignores a group below the minimum', () => {
-    const short = Array.from({ length: DEFAULT_MIN_CLUSTER - 1 }, () => 'cherry');
+    const short = Array.from({ length: DEFAULT_MIN_CLUSTER - 1 }, () => CHERRY);
     const board = grid(
-      [...short, 'lemon'].slice(0, 5),
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
+      [...short, LEMON].slice(0, 5),
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
     );
-    expect(evaluateCluster(config, board, 10).some((w) => w.symbolId === 'cherry')).toBe(false);
+    expect(evaluateCluster(config, board, 10).some((w) => w.symbolId === CHERRY)).toBe(false);
   });
 
   it('lets a wild join a cluster but never seed one', () => {
     const allWild = grid(
-      ['wild', 'wild', 'wild', 'wild', 'wild'],
-      ['wild', 'wild', 'wild', 'wild', 'wild'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
+      [WILD, WILD, WILD, WILD, WILD],
+      [WILD, WILD, WILD, WILD, WILD],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
     );
     // A blob of wilds alone pays nothing: it belongs to no symbol.
-    expect(evaluateCluster(config, allWild, 10).some((w) => w.symbolId === 'wild')).toBe(false);
+    expect(evaluateCluster(config, allWild, 10).some((w) => w.symbolId === WILD)).toBe(false);
   });
 
   it('never counts one cell in two clusters', () => {
     const board = grid(
-      ['cherry', 'cherry', 'cherry', 'cherry', 'cherry'],
-      ['cherry', 'cherry', 'cherry', 'cherry', 'cherry'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
+      [CHERRY, CHERRY, CHERRY, CHERRY, CHERRY],
+      [CHERRY, CHERRY, CHERRY, CHERRY, CHERRY],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
     );
     const wins = evaluateCluster(config, board, 10);
     const cells = wins.flatMap((win) => win.cells);
@@ -162,18 +176,18 @@ describe('cluster pays', () => {
 
   it('pays a bigger cluster more than a smaller one', () => {
     const small = grid(
-      ['cherry', 'cherry', 'cherry', 'lemon', 'lemon'],
-      ['cherry', 'cherry', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
+      [CHERRY, CHERRY, CHERRY, LEMON, LEMON],
+      [CHERRY, CHERRY, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
     );
     const large = grid(
-      ['cherry', 'cherry', 'cherry', 'cherry', 'cherry'],
-      ['cherry', 'cherry', 'cherry', 'cherry', 'cherry'],
-      ['cherry', 'cherry', 'cherry', 'cherry', 'cherry'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
-      ['lemon', 'lemon', 'lemon', 'lemon', 'lemon'],
+      [CHERRY, CHERRY, CHERRY, CHERRY, CHERRY],
+      [CHERRY, CHERRY, CHERRY, CHERRY, CHERRY],
+      [CHERRY, CHERRY, CHERRY, CHERRY, CHERRY],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
+      [LEMON, LEMON, LEMON, LEMON, LEMON],
     );
     const smallWin = evaluateCluster(config, small, 10)[0]!;
     const largeWin = evaluateCluster(config, large, 10)[0]!;
