@@ -375,6 +375,18 @@ function Scene(props: BingoRoomSceneProps) {
     };
   }, [crowdOrigin]);
 
+  /**
+   * Chairs a click should seat you in.
+   *
+   * Only the free ones, and only while standing: clicking a chair you are
+   * already in should do nothing, and clicking someone else's would send a
+   * request the server is going to refuse.
+   */
+  const freeSeatIds = useMemo(
+    () => new Set(props.stance === 'STANDING' ? props.freeSeats.map((seat) => seat.id) : []),
+    [props.freeSeats, props.stance],
+  );
+
   const localSeat = occupancy.localSeat;
   const seatedTable = localSeat ? TABLES[localSeat.tableIndex] : undefined;
   const deckOrigin = useMemo(() => {
@@ -454,6 +466,8 @@ function Scene(props: BingoRoomSceneProps) {
           seat={seat}
           occupied={seat.id === occupancy.localSeat?.id}
           castShadow={shadows}
+          selectable={freeSeatIds.has(seat.id)}
+          onSit={(seatId) => props.onInteract({ target: 'SIT', seatId })}
         />
       ))}
 

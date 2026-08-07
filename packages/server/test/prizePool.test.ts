@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BINGO_CLAIM_TIERS,
   BINGO_PRIZE_TIERS,
   DEFAULT_PRIZE_POOL_CONFIG,
   DEFAULT_PRIZE_SPLIT,
@@ -156,5 +157,33 @@ describe('joint winners', () => {
 
   it('treats a nonsense winner count as one winner', () => {
     expect(shareBetween(50, 0)).toEqual([50]);
+  });
+});
+
+describe('every advertised prize is a prize someone can win', () => {
+  /**
+   * The split used to name five tiers while the game only accepted two claims,
+   * so 28% of every pot was collected from the players, shown on the prize
+   * panel as if it were on offer, and paid to nobody. This is the invariant
+   * that makes that impossible to reintroduce.
+   */
+  it('advertises exactly the tiers that can be claimed', () => {
+    expect([...BINGO_PRIZE_TIERS].sort()).toEqual([...BINGO_CLAIM_TIERS].sort());
+  });
+
+  it('pays the whole distributed pot out, to the credit', () => {
+    for (const cards of [1, 7, 13, 100, 999]) {
+      const pool = computePrizePool(cards, DEFAULT_PRIZE_POOL_CONFIG);
+      const paid = BINGO_PRIZE_TIERS.reduce((sum, tier) => sum + pool.perTier[tier], 0);
+      expect(paid, `${cards} cards`).toBe(pool.distributedCredits);
+    }
+  });
+
+  it('keeps the two prizes in the proportion they always had', () => {
+    // Cinquina was 0.20 and Bingo 0.52 of a pot only 72% of which was paid.
+    // Renormalising must not quietly turn the smaller prize into the larger.
+    const pool = computePrizePool(1_000, DEFAULT_PRIZE_POOL_CONFIG);
+    expect(pool.perTier.BINGO).toBeGreaterThan(pool.perTier.CINQUINA * 2);
+    expect(pool.perTier.CINQUINA / pool.perTier.BINGO).toBeCloseTo(0.2 / 0.52, 2);
   });
 });

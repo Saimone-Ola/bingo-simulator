@@ -138,6 +138,10 @@ export default function BingoPage() {
   >([]);
   const [seatError, setSeatError] = useState<string | null>(null);
   const [interaction, setInteraction] = useState<InteractionFocus>({ target: null, seatId: null });
+  // Read by the round-start effect, which must not re-run every time the
+  // player's gaze drifts across a chair.
+  const interactionRef = useRef<InteractionFocus>({ target: null, seatId: null });
+  interactionRef.current = interaction;
   const [focusCard, setFocusCard] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(true);
   const [customisingAvatar, setCustomisingAvatar] = useState(false);
@@ -292,7 +296,12 @@ export default function BingoPage() {
     const previous = previousPhase.current;
     previousPhase.current = phase;
     if (phase === 'COUNTDOWN' || phase === 'PLAYING') {
-      if (!snapshot?.mySeatId && freeSeats[0]) takeBingoSeat(freeSeats[0].id);
+      // Prefer the chair the player is standing next to; only fall back to
+      // an arbitrary free one when they are nowhere near a table.
+      const target =
+        interactionRef.current.target === 'SIT' ? interactionRef.current.seatId : null;
+      const seatId = target ?? freeSeats[0]?.id ?? null;
+      if (!snapshot?.mySeatId && seatId) takeBingoSeat(seatId);
       setPanel('NONE');
     }
     if (phase === 'CARD_PURCHASE' && previous !== null && previous !== 'WAITING') {
@@ -350,6 +359,27 @@ export default function BingoPage() {
     },
     [],
   );
+
+  /**
+   * The seat button in the HUD.
+   *
+   * Standing, it sits you in the chair you are actually next to — the first
+   * free seat in the hall is a legitimate chair and a terrible answer, since
+   * taking it teleports you forty metres across the room. With no chair in
+   * reach there is nothing sensible to sit in, so it opens the map instead of
+   * doing nothing.
+   */
+  const toggleSeat = useCallback(() => {
+    if (stance === 'SEATED') {
+      handleInteract({ target: 'STAND', seatId: snapshot?.mySeatId ?? null });
+      return;
+    }
+    if (interaction.target === 'SIT' && interaction.seatId) {
+      handleInteract({ target: 'SIT', seatId: interaction.seatId });
+      return;
+    }
+    setPanel('SEATS');
+  }, [stance, snapshot?.mySeatId, interaction, handleInteract]);
 
   const saveHostConfig = useCallback((next: RoomBingoConfig) => {
     setHostConfig(next);
@@ -631,13 +661,7 @@ export default function BingoPage() {
             onSelectCard={setSelectedCard}
             onSelectMarker={setMarkerColor}
             onClaim={claim}
-            onToggleSeat={() =>
-              handleInteract(
-                stance === 'SEATED'
-                  ? { target: 'STAND', seatId: snapshot.mySeatId }
-                  : { target: 'SIT', seatId: freeSeats[0]?.id ?? null },
-              )
-            }
+            onToggleSeat={toggleSeat}
             onFocusCard={() => setFocusCard((value) => !value)}
             focusCard={focusCard}
           />

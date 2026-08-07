@@ -108,7 +108,7 @@ function symbol(
  * the low and high pays, and few enough that a player can learn the set within
  * a couple of spins.
  */
-export const SLOT_SYMBOL_LIBRARY: Record<SlotTheme, LibrarySymbol[]> = {
+const THEME_SYMBOLS: Record<SlotTheme, LibrarySymbol[]> = {
   FRUTTA: [
     symbol('cherry', 'Ciliegia', 'cherry', '#e2434f', '#3ba55d', 0),
     symbol('lemon', 'Limone', 'circle', '#f6c453', '#c99a26', 1),
@@ -212,6 +212,30 @@ export const SLOT_SYMBOL_LIBRARY: Record<SlotTheme, LibrarySymbol[]> = {
     symbol('scatter', 'Stella', 'star', '#ffd166', '#e2434f', 7, 'scatter'),
   ],
 };
+
+/**
+ * The library, with every id namespaced by its theme.
+ *
+ * Ten themes each defined a `wild`, a `scatter` and often a `crown` or a
+ * `bell`. Anything keyed by symbol id across the whole library — the art lookup
+ * in the editor and in the reel panel, both of which build a Map — therefore
+ * had one entry per *name* rather than per symbol, and the last theme loaded
+ * won: every machine drew the Christmas bow as its wild.
+ *
+ * The engine never looks at an id, only at `kind`, so namespacing them costs
+ * nothing mechanically and makes a symbol's identity actually identify it.
+ */
+export const SLOT_SYMBOL_LIBRARY: Record<SlotTheme, LibrarySymbol[]> = Object.fromEntries(
+  SLOT_THEMES.map((theme) => [
+    theme,
+    THEME_SYMBOLS[theme].map((entry) => ({ ...entry, id: themeSymbolId(theme, entry.id) })),
+  ]),
+) as Record<SlotTheme, LibrarySymbol[]>;
+
+/** `frutta:cherry`. Stable, and readable in a stored configuration. */
+export function themeSymbolId(theme: SlotTheme, localId: string): string {
+  return `${theme.toLowerCase()}:${localId}`;
+}
 
 /** Every symbol in the library, for search and for counting. */
 export function allLibrarySymbols(): LibrarySymbol[] {

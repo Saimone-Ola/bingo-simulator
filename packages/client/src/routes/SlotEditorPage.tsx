@@ -14,6 +14,7 @@ import {
   defaultSlotConfig,
   slotPreset,
   type SlotConfig,
+  type SlotSymbol as SlotSymbolConfig,
   type SlotMachineDetail,
   type SlotMachineSummary,
   type SlotSimulationReport,
@@ -60,29 +61,52 @@ function artFor(symbolId: string) {
   return SYMBOL_ART.get(symbolId) ?? UNKNOWN_SYMBOL;
 }
 
-/** Swaps the machine's symbol set for another theme's, keeping the maths. */
+/**
+ * Swaps the machine's symbol set for another theme's, keeping the maths.
+ *
+ * The old symbol each new one inherits from is matched by *kind first, then
+ * rank* — never by position in the array. A preset has six symbols with the
+ * wild fifth and the scatter sixth; a theme has eight with the wild seventh and
+ * the scatter eighth. Matching by index therefore handed the wild's paytable to
+ * a bell and left the new wild and scatter paying nothing, which turns a
+ * restyle into a silent recalibration of the machine's RTP.
+ */
 function applyTheme(config: SlotConfig, theme: SlotTheme): SlotConfig {
   const entries = themeSymbols(theme);
   const weights = suggestedWeights(theme);
-  const previous = config.symbols;
 
-  const symbols = entries.map((entry, index) => ({
-    id: entry.id,
-    name: entry.name,
-    kind: entry.kind,
-    // Reuse the weights already tuned where the ranks line up, so switching
-    // theme restyles a machine instead of resetting the work done on it.
-    weights:
-      previous[index]?.weights.length === config.reels
-        ? [...previous[index]!.weights]
-        : Array.from({ length: config.reels }, () => weights[entry.id] ?? 10),
-  }));
+  // Ranked within each kind, so the commonest old symbol feeds the commonest
+  // new one and the wild feeds the wild.
+  const previousByKind = new Map<SlotSymbolConfig['kind'], SlotSymbolConfig[]>();
+  for (const symbol of config.symbols) {
+    const bucket = previousByKind.get(symbol.kind) ?? [];
+    bucket.push(symbol);
+    previousByKind.set(symbol.kind, bucket);
+  }
+  const takenSoFar = new Map<SlotSymbolConfig['kind'], number>();
+  const inherit = (kind: SlotSymbolConfig['kind']): SlotSymbolConfig | undefined => {
+    const index = takenSoFar.get(kind) ?? 0;
+    takenSoFar.set(kind, index + 1);
+    return previousByKind.get(kind)?.[index];
+  };
 
+  const symbols: SlotSymbolConfig[] = [];
   const paytable: Record<string, Record<number, number>> = {};
-  entries.forEach((entry, index) => {
-    const old = previous[index];
+  for (const entry of entries) {
+    const old = inherit(entry.kind);
+    symbols.push({
+      id: entry.id,
+      name: entry.name,
+      kind: entry.kind,
+      // Reuse the weights already tuned where the ranks line up, so switching
+      // theme restyles a machine instead of resetting the work done on it.
+      weights:
+        old?.weights.length === config.reels
+          ? [...old.weights]
+          : Array.from({ length: config.reels }, () => weights[entry.id] ?? 10),
+    });
     paytable[entry.id] = old ? { ...(config.paytable[old.id] ?? {}) } : {};
-  });
+  }
 
   return { ...config, symbols, paytable };
 }
