@@ -132,8 +132,23 @@ Il workflow `.github/workflows/quality.yml` esegue gli stessi controlli a ogni
 push e pull request.
 
 I test che toccano il database si saltano da soli quando manca
-`TEST_DATABASE_URL`, così `pnpm test` gira su un checkout pulito. Per eseguirli
-serve un PostgreSQL usa-e-getta.
+`TEST_DATABASE_URL`, così `pnpm test` gira su un checkout pulito:
+
+```bash
+TEST_DATABASE_URL=postgresql://… pnpm test    # 214 test, nessuno saltato
+```
+
+Il workflow avvia un PostgreSQL 16 come service e applica le migrazioni prima
+dei test, quindi **tutti e 214 girano contro un database vero** a ogni push.
+Prima non era così: `DATABASE_URL` era impostata ma nessuno era in ascolto sulla
+5432, quindi le suite del ledger e della hub room partivano e fallivano — la
+build era rossa a ogni run e i quindici test che quella variabile doveva
+abilitare non erano mai stati eseguiti.
+
+Verificato a mano sullo stesso database: migrazioni idempotenti (una seconda
+esecuzione non riapplica nulla), seed di 8 slot con RTP misurato su 100 000 giri
+ciascuna, `check-ledger-integrity` che ri-deriva 101 portafogli dalla somma
+delle scritture, e l'`UPDATE` su `ledger_entries` respinto dal trigger.
 
 ## Non implementato
 

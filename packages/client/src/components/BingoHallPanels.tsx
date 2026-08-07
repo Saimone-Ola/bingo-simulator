@@ -182,6 +182,17 @@ export function PurchasePanel({
   );
 }
 
+/** Words rather than a bare number: "4 ospiti" was never what this meant. */
+const CROWD_DENSITY_LABELS: Record<number, string> = {
+  0: 'Sala vuota',
+  1: 'Quasi deserta',
+  2: 'Tranquilla',
+  3: 'Normale',
+  4: 'Animata',
+  5: 'Affollata',
+  6: 'Tutto esaurito',
+};
+
 export function HostPanel({
   config,
   isHost,
@@ -266,16 +277,19 @@ export function HostPanel({
           </select>
         </label>
         <label className="grid gap-1 text-[11px] font-bold text-white/60">
-          NPC ai posti liberi: {config.npcCount}
+          Affluenza in sala: {CROWD_DENSITY_LABELS[config.crowdDensity] ?? 'Normale'}
           <input
             type="range"
             min={0}
             max={6}
             disabled={!isHost}
-            value={config.npcCount}
-            onChange={(event) => update('npcCount', Number(event.target.value))}
+            value={config.crowdDensity}
+            onChange={(event) => update('crowdDensity', Number(event.target.value))}
             className="accent-violet-400"
           />
+          <span className="text-[10px] font-normal text-white/40">
+            La sala si riempie da sola secondo l'ora del giorno. Questo la scala.
+          </span>
         </label>
         <label className="grid gap-1 text-[11px] font-bold text-white/60">
           Ritmo chiamata: {(config.numberCallInterval / 1_000).toFixed(1)} s

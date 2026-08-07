@@ -48,7 +48,14 @@ export type RoomBingoConfig = {
   maxAutomaticCards: number;
   numberCallInterval: number;
   enabledEvents: string[];
-  npcCount: number;
+  /**
+   * How busy the hall should be, 0–6, where 3 is "as this hall normally is at
+   * this hour". It used to be `npcCount`, a literal number of guests capped at
+   * six, which is why a room with 512 chairs never held more than two dozen
+   * people. The crowd size now comes from the time of day and the round; this
+   * scales it.
+   */
+  crowdDensity: number;
   tier: BingoRoomTier;
   chaosLevel: BingoChaosLevel;
 };
@@ -217,7 +224,7 @@ export const bingoConfigSchema = z
     startMode: z.enum(BINGO_START_MODES),
     countdownSeconds: z.number().int().min(5).max(180),
     numberCallInterval: z.number().int().min(2_500).max(12_000),
-    npcCount: z.number().int().min(0).max(6),
+    crowdDensity: z.number().int().min(0).max(6),
     tier: z.enum(BINGO_ROOM_TIERS),
     chaosLevel: z.enum(BINGO_CHAOS_LEVELS),
   })

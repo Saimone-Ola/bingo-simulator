@@ -14,6 +14,24 @@ jobs:
     name: Typecheck, test and build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The suites that touch the ledger and the hub room need a real database.
+    # DATABASE_URL was already set below, which switched those suites on — but
+    # nothing was ever listening on 5432, so `pnpm test` failed on every run and
+    # the fifteen tests it was meant to enable had never executed anywhere.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: bingo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://test:test@127.0.0.1:5432/bingo_test
@@ -35,6 +53,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Type checking
         run: pnpm typecheck
+      - name: Database schema
+        run: pnpm --filter @bingo/server db:migrate
       - name: Automated tests
         run: pnpm test
       - name: Production build

@@ -9,7 +9,43 @@ sessione. Serve un host con processi persistenti.
 
 ---
 
-## 1. Database → Neon (~2 minuti, gratis, nessuna carta)
+## 1. Database → Supabase (il progetto già in uso)
+
+Lo schema è **già applicato** sul progetto `bingo-simulator`
+(`retshssatcmgehmnngsd`, eu-central-1): 19 tabelle, 62 indici, i tre trigger di
+immutabilità del ledger e il guardiano dell'RTP. Il registro delle migrazioni di
+Drizzle è allineato, quindi un `pnpm --filter @bingo/server db:migrate` non
+riapplica niente: vede il database aggiornato e non fa nulla.
+
+Manca **solo la password**, che non è leggibile da fuori: si prende da
+**Project Settings → Database → Connection string**, oppure si rigenera lì con
+**Reset database password**. Poi:
+
+| Variabile | Stringa |
+|---|---|
+| `DATABASE_URL` | `postgresql://postgres.retshssatcmgehmnngsd:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres` |
+| `DATABASE_URL_UNPOOLED` | `postgresql://postgres.retshssatcmgehmnngsd:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:5432/postgres` |
+
+Cambia solo la **porta**: `6543` è il pooler in modalità *transaction*, giusto
+per il server che apre e chiude connessioni brevi; `5432` sullo stesso host è la
+modalità *session*, l'unica che regge l'advisory lock che il migratore prende.
+
+Due dettagli già a posto nel codice, da non rompere:
+
+- `prepare: false` in `db/client.ts` è **obbligatorio** sul pooler in modalità
+  transaction: senza, i prepared statement si perdono fra una connessione e
+  l'altra e le query falliscono a intermittenza.
+- L'host diretto `db.retshssatcmgehmnngsd.supabase.co` è **solo IPv6**. Molti
+  host PaaS non lo raggiungono: usare il pooler per entrambe le variabili.
+
+Le API REST generate da Supabase sono **chiuse**: RLS attivo senza policy su
+tutte le tabelle. L'applicazione non le usa — parla direttamente in Postgres — e
+senza RLS chiunque avesse la chiave pubblica del bundle avrebbe letto
+`users.password_hash`, i saldi e l'intero ledger.
+
+---
+
+## 1-bis. In alternativa: Neon (~2 minuti, gratis, nessuna carta)
 
 1. Vai su <https://neon.tech> → registrati (basta il login GitHub)
 2. **Create project**

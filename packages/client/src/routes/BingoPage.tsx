@@ -3,6 +3,8 @@ import SeatMap from '../components/SeatMap';
 import SestinaGrid from '../components/SestinaGrid';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  DEFAULT_NPC_DENSITY,
+  HALL_CAPACITY,
   SEAT_REJECTION_REASONS,
   SESTINA_CARD_COUNT,
   normaliseBingoRoomCode,
@@ -54,8 +56,9 @@ import {
 } from '../net/bingoConnection';
 import { useAuthStore } from '../store/auth';
 import { useHallSettings } from '../store/hallSettings';
-import type { InteractionTarget } from '../three/bingo/PlayerMovementController';
+import type { InteractionFocus } from '../three/bingo/PlayerMovementController';
 import type { PlayerStance } from '../three/bingo/movement';
+import { SEATS, type SeatPlacement } from '../three/bingo/hallLayout';
 import { MARKER_COLORS } from '../three/BingoRoomScene';
 import BingoFallback2D from '../components/BingoFallback2D';
 
@@ -64,7 +67,7 @@ const AvatarCustomizer = lazy(() => import('../components/AvatarCustomizer'));
 
 const EMPTY_CONFIG: RoomBingoConfig = {
   minPlayers: 2,
-  maxPlayers: 20,
+  maxPlayers: HALL_CAPACITY,
   startMode: 'ALL_READY',
   countdownSeconds: 10,
   cardPrice: 10,
@@ -72,7 +75,7 @@ const EMPTY_CONFIG: RoomBingoConfig = {
   maxAutomaticCards: 6,
   numberCallInterval: 5_000,
   enabledEvents: [],
-  npcCount: 1,
+  crowdDensity: DEFAULT_NPC_DENSITY,
   tier: 'STANDARD',
   chaosLevel: 'LIGHT',
 };
@@ -134,8 +137,7 @@ export default function BingoPage() {
     readonly { seatId: string; holderId: string; expiresAt: number }[]
   >([]);
   const [seatError, setSeatError] = useState<string | null>(null);
-  const [stance, setStance] = useState<PlayerStance>('STANDING');
-  const [interaction, setInteraction] = useState<InteractionTarget>(null);
+  const [interaction, setInteraction] = useState<InteractionFocus>({ target: null, seatId: null });
   const [focusCard, setFocusCard] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(true);
   const [customisingAvatar, setCustomisingAvatar] = useState(false);
@@ -263,20 +265,40 @@ export default function BingoPage() {
   const phase = snapshot?.phase ?? 'WAITING';
   const manualMarking = me?.markingMode === 'MANUAL';
 
-  // Sit the player down automatically once the round starts, and let them back
-  // up when the room returns to preparation.
+  /**
+   * Sitting is what the server says it is.
+   *
+   * This used to be local state the page flipped on its own, which meant the
+   * two could disagree: pressing the key sat you down in your own view while
+   * the room still had you standing, and nobody else saw you take the chair.
+   * One source of truth, and it is the one that owns the seat.
+   */
+  const stance: PlayerStance = snapshot?.mySeatId ? 'SEATED' : 'STANDING';
+
+  /** Chairs nobody is in, so the world knows which ones can be walked up to. */
+  const freeSeats = useMemo(() => {
+    const taken = new Set(seating.map((entry) => entry.seatId));
+    const heldByOthers = new Set(
+      reservations
+        .filter((entry) => entry.holderId !== me?.userId && entry.expiresAt > now)
+        .map((entry) => entry.seatId),
+    );
+    return SEATS.filter((seat: SeatPlacement) => !taken.has(seat.id) && !heldByOthers.has(seat.id));
+  }, [seating, reservations, me?.userId, now]);
+
+  // Once the round starts, take a chair rather than pretending to be in one.
   useEffect(() => {
     if (previousPhase.current === phase) return;
     const previous = previousPhase.current;
     previousPhase.current = phase;
     if (phase === 'COUNTDOWN' || phase === 'PLAYING') {
-      setStance('SEATED');
+      if (!snapshot?.mySeatId && freeSeats[0]) takeBingoSeat(freeSeats[0].id);
       setPanel('NONE');
     }
     if (phase === 'CARD_PURCHASE' && previous !== null && previous !== 'WAITING') {
       setFocusCard(false);
     }
-  }, [phase]);
+  }, [phase, snapshot?.mySeatId, freeSeats]);
 
   const countdownSeconds = useMemo(() => {
     if (phase !== 'COUNTDOWN' || !snapshot?.countdownEndsAt) return null;
@@ -305,21 +327,28 @@ export default function BingoPage() {
     [snapshot, selectedCard],
   );
 
-  const toggleSeat = useCallback(() => {
-    playHallSfx('chair');
-    setStance((current) => (current === 'SEATED' ? 'STANDING' : 'SEATED'));
-  }, []);
-
   const handleInteract = useCallback(
-    (target: InteractionTarget) => {
+    (focus: InteractionFocus) => {
       resumeHallAudio();
-      if (target === 'RECEPTION') {
+      if (focus.target === 'RECEPTION') {
         setPanel((current) => (current === 'PURCHASE' ? 'NONE' : 'PURCHASE'));
         return;
       }
-      if (target === 'SIT' || target === 'STAND') toggleSeat();
+      // Sitting and standing are requests, not decisions: the server owns the
+      // chair and may refuse, and the refusal is what seatError reports.
+      if (focus.target === 'SIT' && focus.seatId) {
+        setSeatError(null);
+        playHallSfx('chair');
+        takeBingoSeat(focus.seatId);
+        return;
+      }
+      if (focus.target === 'STAND') {
+        setSeatError(null);
+        playHallSfx('chair');
+        leaveBingoSeat();
+      }
     },
-    [toggleSeat],
+    [],
   );
 
   const saveHostConfig = useCallback((next: RoomBingoConfig) => {
@@ -328,7 +357,7 @@ export default function BingoPage() {
       startMode: next.startMode,
       countdownSeconds: next.countdownSeconds,
       numberCallInterval: next.numberCallInterval,
-      npcCount: next.npcCount,
+      crowdDensity: next.crowdDensity,
       tier: next.tier,
       chaosLevel: next.chaosLevel,
     });
@@ -407,6 +436,9 @@ export default function BingoPage() {
                 manualMarking={Boolean(manualMarking)}
                 focusCard={focusCard}
                 stance={stance}
+                freeSeats={freeSeats}
+                myUserId={me?.userId ?? null}
+                seating={seating}
                 quality={settings.quality}
                 shadows={settings.shadows}
                 reducedMotion={reducedMotion}
@@ -505,7 +537,7 @@ export default function BingoPage() {
       {snapshot && !sceneFailed && (
         <>
           <Crosshair visible={!panelOpen && stance === 'STANDING'} />
-          <InteractionPrompt target={panelOpen ? null : interaction} />
+          <InteractionPrompt target={panelOpen ? null : interaction.target} />
 
           <ReadyRoster
             players={snapshot.players}
@@ -599,7 +631,13 @@ export default function BingoPage() {
             onSelectCard={setSelectedCard}
             onSelectMarker={setMarkerColor}
             onClaim={claim}
-            onToggleSeat={toggleSeat}
+            onToggleSeat={() =>
+              handleInteract(
+                stance === 'SEATED'
+                  ? { target: 'STAND', seatId: snapshot.mySeatId }
+                  : { target: 'SIT', seatId: freeSeats[0]?.id ?? null },
+              )
+            }
             onFocusCard={() => setFocusCard((value) => !value)}
             focusCard={focusCard}
           />
