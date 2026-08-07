@@ -35,3 +35,16 @@ export const DEFAULT_LOCALE: Locale = 'it';
 
 /** Advisory age gate. Bingo Simulator has no real-money features at all. */
 export const ADVISED_MIN_AGE = 18;
+
+
+/**
+ * Most cards one player may hold in a round.
+ *
+ * A regular at a real hall buys a fistful and marks them with the little
+ * machine on the table, which is what makes fifty playable rather than
+ * frantic. The limit exists so a single wallet cannot buy the whole pot.
+ */
+export const MAX_CARDS_PER_PLAYER = 50;
+
+/** How long the sellers work the room before the round starts. */
+export const DEFAULT_PURCHASE_SECONDS = 120;

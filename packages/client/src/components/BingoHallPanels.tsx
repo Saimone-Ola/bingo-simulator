@@ -292,6 +292,22 @@ export function HostPanel({
           </span>
         </label>
         <label className="grid gap-1 text-[11px] font-bold text-white/60">
+          Tempo per acquistare: {Math.round(config.purchaseSeconds / 6) / 10} min
+          <input
+            type="range"
+            min={30}
+            max={600}
+            step={30}
+            disabled={!isHost}
+            value={config.purchaseSeconds}
+            onChange={(event) => update('purchaseSeconds', Number(event.target.value))}
+            className="accent-violet-400"
+          />
+          <span className="text-[10px] font-normal text-white/40">
+            Quanto girano i venditori fra i tavoli prima che si parta.
+          </span>
+        </label>
+        <label className="grid gap-1 text-[11px] font-bold text-white/60">
           Ritmo chiamata: {(config.numberCallInterval / 1_000).toFixed(1)} s
           <input
             type="range"

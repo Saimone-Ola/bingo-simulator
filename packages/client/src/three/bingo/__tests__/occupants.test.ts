@@ -40,7 +40,7 @@ function seatedAt(occupantId: string, index: number, kind: SeatOccupancy['kind']
   };
 }
 
-const options = { ambientCount: 6, roomSeed: 'TESI-2026', mySeatId: SEATS[0]!.id, myUserId: 'me' };
+const options = { roomSeed: 'TESI-2026', mySeatId: SEATS[0]!.id, myUserId: 'me' };
 
 describe('buildOccupancy', () => {
   it('draws everyone the chart seats', () => {
@@ -86,41 +86,35 @@ describe('buildOccupancy', () => {
     const seating = players.map((entry, index) => seatedAt(entry.sessionId, index));
     const { occupants } = buildOccupancy(
       players,
-      { ambientCount: 20, roomSeed: 'x', myUserId: null, mySeatId: null },
+      { roomSeed: 'x', myUserId: null, mySeatId: null },
       seating,
     );
     const seatIds = occupants.map((occupant) => occupant.seat.id);
     expect(new Set(seatIds).size).toBe(seatIds.length);
   });
 
-  it('adds decorative guests only on chairs the server did not use', () => {
+  it('draws nobody the server has not seated', () => {
+    // The hall used to add decorative guests of its own to fill empty chairs.
+    // They appeared in 3D and nowhere on the seat map, so the person sitting
+    // next to you could be someone the room had never heard of — which is
+    // exactly how it looked to a player, and exactly what this forbids.
     const seating = [seatedAt('other', 3)];
     const { occupants } = buildOccupancy(
       [player({ sessionId: 'other' })],
-      { ambientCount: 5, roomSeed: 'x', myUserId: null, mySeatId: null },
+      { roomSeed: 'x', myUserId: null, mySeatId: null },
       seating,
     );
-    const ambient = occupants.filter((occupant) => occupant.kind === 'AMBIENT');
-    expect(ambient).toHaveLength(5);
-    expect(ambient.some((occupant) => occupant.seat.id === SEATS[3]!.id)).toBe(false);
+    expect(occupants).toHaveLength(1);
+    expect(occupants[0]?.seat.id).toBe(SEATS[3]!.id);
   });
 
-  it('honours an ambient density of zero', () => {
+  it('draws an empty hall as empty', () => {
     const { occupants } = buildOccupancy(
       [],
-      { ambientCount: 0, roomSeed: 'x', myUserId: null, mySeatId: null },
+      { roomSeed: 'x', myUserId: null, mySeatId: null },
       [],
     );
     expect(occupants).toHaveLength(0);
-  });
-
-  it('never asks for more guests than there are chairs', () => {
-    const { occupants } = buildOccupancy(
-      [],
-      { ambientCount: 5_000, roomSeed: 'x', myUserId: null, mySeatId: null },
-      [],
-    );
-    expect(occupants.length).toBeLessThanOrEqual(SEATS.length);
   });
 
   it('fills the whole hall when the server says it is full', () => {
@@ -128,7 +122,7 @@ describe('buildOccupancy', () => {
     const seating = SEATS.map((_seat, index) => seatedAt(`guest-${index}`, index, 'NPC'));
     const { occupants } = buildOccupancy(
       [],
-      { ambientCount: 0, roomSeed: 'x', myUserId: null, mySeatId: null },
+      { roomSeed: 'x', myUserId: null, mySeatId: null },
       seating,
     );
     expect(occupants).toHaveLength(SEATS.length);
@@ -139,8 +133,8 @@ describe('buildOccupancy', () => {
     // snapshot nobody wants to broadcast — so their appearance is derived from
     // their id, and every client has to derive the same one.
     const seating = [seatedAt('npc-7', 5, 'NPC')];
-    const first = buildOccupancy([], { ambientCount: 0, roomSeed: 'x' }, seating);
-    const second = buildOccupancy([], { ambientCount: 0, roomSeed: 'x' }, seating);
+    const first = buildOccupancy([], { roomSeed: 'x' }, seating);
+    const second = buildOccupancy([], { roomSeed: 'x' }, seating);
     const face = first.occupants[0]?.appearance;
     expect(face).toBeDefined();
     expect(face).toEqual(second.occupants[0]?.appearance);
@@ -161,7 +155,7 @@ describe('buildOccupancy', () => {
     const seating = [seatedAt('me', 0), seatedAt('npc-1', 1, 'NPC')];
     const { occupants } = buildOccupancy(
       [player({ sessionId: 'me' })],
-      { ambientCount: 0, roomSeed: 'x', myUserId: 'me', mySeatId: SEATS[0]!.id },
+      { roomSeed: 'x', myUserId: 'me', mySeatId: SEATS[0]!.id },
       seating,
     );
     expect(occupants.find((occupant) => occupant.id === 'me')?.kind).toBe('PLAYER');
@@ -172,7 +166,7 @@ describe('buildOccupancy', () => {
     const broken = { ...player({ sessionId: 'other' }), appearance: undefined };
     const { occupants } = buildOccupancy(
       [broken as unknown as BingoPlayerSummary],
-      { ambientCount: 0, roomSeed: 'x', myUserId: null, mySeatId: null },
+      { roomSeed: 'x', myUserId: null, mySeatId: null },
       [seatedAt('other', 0)],
     );
     expect(occupants[0]?.appearance).toEqual(DEFAULT_APPEARANCE);
@@ -181,7 +175,7 @@ describe('buildOccupancy', () => {
   it('ignores a chart row for a chair that does not exist', () => {
     const { occupants } = buildOccupancy(
       [],
-      { ambientCount: 0, roomSeed: 'x', myUserId: null, mySeatId: null },
+      { roomSeed: 'x', myUserId: null, mySeatId: null },
       [{ seatId: 'nowhere', occupantId: 'ghost', displayName: 'Ghost', kind: 'NPC', disconnected: false }],
     );
     expect(occupants).toHaveLength(0);

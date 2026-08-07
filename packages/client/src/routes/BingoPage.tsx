@@ -4,6 +4,7 @@ import SestinaGrid from '../components/SestinaGrid';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DEFAULT_NPC_DENSITY,
+  DEFAULT_PURCHASE_SECONDS,
   HALL_CAPACITY,
   SEAT_REJECTION_REASONS,
   SESTINA_CARD_COUNT,
@@ -33,6 +34,7 @@ import {
 import TouchJoystick from '../components/TouchJoystick';
 import {
   disposeHallAudio,
+  announce,
   playHallSfx,
   resumeHallAudio,
   setHallVolume,
@@ -70,6 +72,7 @@ const EMPTY_CONFIG: RoomBingoConfig = {
   maxPlayers: HALL_CAPACITY,
   startMode: 'ALL_READY',
   countdownSeconds: 10,
+  purchaseSeconds: DEFAULT_PURCHASE_SECONDS,
   cardPrice: 10,
   maxManualCards: 3,
   maxAutomaticCards: 6,
@@ -220,14 +223,7 @@ export default function BingoPage() {
         // Read the live preference rather than the one captured when the room
         // was joined: muting mid-round has to silence the caller immediately.
         const audio = useHallSettings.getState();
-        if ('speechSynthesis' in window && !audio.muted) {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(`Numero ${payload.number}`);
-          utterance.lang = 'it-IT';
-          utterance.rate = 0.9;
-          utterance.volume = Math.min(1, audio.volume + 0.2);
-          window.speechSynthesis.speak(utterance);
-        }
+        if (!audio.muted) announce(`Numero ${payload.number}`, audio.volume + 0.2);
       },
       onWinner: (payload) => {
         if (!active) return;
@@ -303,6 +299,13 @@ export default function BingoPage() {
       const seatId = target ?? freeSeats[0]?.id ?? null;
       if (!snapshot?.mySeatId && seatId) takeBingoSeat(seatId);
       setPanel('NONE');
+    }
+    if (phase === 'PLAYING' && previous !== 'PLAYING' && previous !== 'EVENT_ACTIVE') {
+      // The caller opens the round out loud, the way a hall does: players stop
+      // buying and look up because they heard it, not because a panel changed
+      // colour.
+      const audio = useHallSettings.getState();
+      if (!audio.muted) announce('Siamo pronti a partire. Primo numero.', audio.volume + 0.2);
     }
     if (phase === 'CARD_PURCHASE' && previous !== null && previous !== 'WAITING') {
       setFocusCard(false);
@@ -386,6 +389,7 @@ export default function BingoPage() {
     updateBingoConfig({
       startMode: next.startMode,
       countdownSeconds: next.countdownSeconds,
+      purchaseSeconds: next.purchaseSeconds,
       numberCallInterval: next.numberCallInterval,
       crowdDensity: next.crowdDensity,
       tier: next.tier,
@@ -473,7 +477,6 @@ export default function BingoPage() {
                 shadows={settings.shadows}
                 reducedMotion={reducedMotion}
                 headBob={settings.headBob}
-                ambientGuests={settings.ambientGuests}
                 inputEnabled={!panelOpen}
                 onSelectCard={setSelectedCard}
                 onSelectMarker={setMarkerColor}

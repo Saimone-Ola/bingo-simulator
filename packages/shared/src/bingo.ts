@@ -46,6 +46,8 @@ export type RoomBingoConfig = {
   cardPrice: number;
   maxManualCards: number;
   maxAutomaticCards: number;
+  /** Seconds the sellers walk the hall taking orders before the round starts. */
+  purchaseSeconds: number;
   numberCallInterval: number;
   enabledEvents: string[];
   /**
@@ -92,6 +94,8 @@ export interface BingoSnapshotPayload {
   phase: BingoPhase;
   phaseChangedAt: number;
   countdownEndsAt: number | null;
+  /** When the card sellers stop taking orders, during CARD_PURCHASE. */
+  purchaseEndsAt: number | null;
   mySessionId: string;
   hostSessionId: string;
   config: RoomBingoConfig;
@@ -223,6 +227,9 @@ export const bingoConfigSchema = z
   .object({
     startMode: z.enum(BINGO_START_MODES),
     countdownSeconds: z.number().int().min(5).max(180),
+    // The window the sellers work the room in. Thirty seconds is a brisk demo,
+    // ten minutes is a real session; two minutes is what a hall actually gives.
+    purchaseSeconds: z.number().int().min(30).max(600),
     numberCallInterval: z.number().int().min(2_500).max(12_000),
     crowdDensity: z.number().int().min(0).max(6),
     tier: z.enum(BINGO_ROOM_TIERS),

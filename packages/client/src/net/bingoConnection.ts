@@ -222,7 +222,7 @@ export function setBingoReady(ready: boolean): void {
 export function updateBingoConfig(
   config: Pick<
     RoomBingoConfig,
-    'startMode' | 'countdownSeconds' | 'numberCallInterval' | 'crowdDensity' | 'tier' | 'chaosLevel'
+    'startMode' | 'countdownSeconds' | 'purchaseSeconds' | 'numberCallInterval' | 'crowdDensity' | 'tier' | 'chaosLevel'
   >,
 ): void {
   sendBingoMessage(BINGO_CLIENT_MESSAGES.updateConfig, config);

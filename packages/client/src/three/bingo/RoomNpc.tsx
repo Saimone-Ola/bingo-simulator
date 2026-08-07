@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import ProceduralCharacter, { type CharacterAnimationState } from '../ProceduralCharacter';
 import { labelTexture } from './textures';
 import { CARD_DEPTH, CARD_WIDTH, DECK_RADIUS, layoutCards } from './cardLayout';
-import { TABLE_TOP_HEIGHT, TABLES, type SeatPlacement } from './hallLayout';
+import { HALL_BOUNDS, TABLE_TOP_HEIGHT, TABLES, type SeatPlacement } from './hallLayout';
 import type { HallOccupant } from './occupants';
 
 /**
@@ -154,16 +154,26 @@ const WAITER_APPEARANCE = {
  * The loop deliberately hugs the outer walls: a route through the middle of the
  * hall walks the waiter straight through a seated player's camera.
  */
-const WAITER_PATH: ReadonlyArray<readonly [number, number]> = [
-  [-9.3, 7.4],
-  [-9.3, -6.9],
-  [-2.0, -7.4],
-  [2.0, -7.4],
-  [9.3, -6.9],
-  [9.3, 7.4],
-  [1.6, 7.6],
-  [-1.6, 7.6],
-];
+/**
+ * The waiter's round, taken from the hall's own bounds.
+ *
+ * It used to be eight literal points inside a ten metre room; in a fifty metre
+ * one the same loop runs straight through four rows of tables. Derived, it
+ * follows the perimeter of whatever hall it is dropped into.
+ */
+const WAITER_PATH: ReadonlyArray<readonly [number, number]> = (() => {
+  const inset = 1.4;
+  const minX = HALL_BOUNDS.minX + inset;
+  const maxX = HALL_BOUNDS.maxX - inset;
+  const minZ = HALL_BOUNDS.minZ + inset;
+  const maxZ = HALL_BOUNDS.maxZ - inset;
+  return [
+    [minX, maxZ],
+    [minX, minZ],
+    [maxX, minZ],
+    [maxX, maxZ],
+  ];
+})();
 
 /**
  * Waiter doing laps of the hall with a tray.

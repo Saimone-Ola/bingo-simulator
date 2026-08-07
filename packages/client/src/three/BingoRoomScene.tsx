@@ -19,6 +19,7 @@ import HallConfetti from './bingo/HallConfetti';
 import RoomNpc, { WanderingWaiter } from './bingo/RoomNpc';
 import RoundBingoTable, { TableTablet } from './bingo/RoundBingoTable';
 import BingoChair from './bingo/BingoChair';
+import CardSellers from './bingo/CardSellers';
 import PlayerMovementController, {
   type InteractionFocus,
 } from './bingo/PlayerMovementController';
@@ -87,7 +88,6 @@ export interface BingoRoomSceneProps {
   shadows: boolean;
   reducedMotion: boolean;
   headBob: boolean;
-  ambientGuests: number;
   inputEnabled: boolean;
   onSelectCard: (index: number) => void;
   onSelectMarker: (color: string) => void;
@@ -262,7 +262,6 @@ function Scene(props: BingoRoomSceneProps) {
       buildOccupancy(
         [...players],
         {
-          ambientCount: props.ambientGuests,
           roomSeed: props.roomCode,
           mySeatId: props.mySeatId,
           myUserId: props.myUserId,
@@ -271,7 +270,6 @@ function Scene(props: BingoRoomSceneProps) {
       ),
     [
       players,
-      props.ambientGuests,
       props.roomCode,
       props.mySeatId,
       props.myUserId,
@@ -493,8 +491,8 @@ function Scene(props: BingoRoomSceneProps) {
               occupant={occupant}
               state={state}
               reducedMotion={reducedMotion}
-              showName={occupant.kind !== 'AMBIENT'}
-              showCards={occupant.kind !== 'AMBIENT' || quality === 'HIGH'}
+              showName={occupant.kind === 'PLAYER'}
+              showCards
               showReadyLight={phase === 'CARD_PURCHASE' && occupant.kind === 'PLAYER'}
             />
           );
@@ -505,6 +503,11 @@ function Scene(props: BingoRoomSceneProps) {
       {quality !== 'LOW' && (
         <WanderingWaiter reducedMotion={reducedMotion} paused={phase === 'COUNTDOWN'} />
       )}
+
+      {/* The sellers work the aisles only while the room is selling. When the
+          window closes they are gone, which is the visible half of the
+          deadline the server keeps. */}
+      {phase === 'CARD_PURCHASE' && <CardSellers reducedMotion={reducedMotion} />}
 
       {/* The local player's own cards and markers, on the table in front of
           their seat. They stay on the table when standing up. */}

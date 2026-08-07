@@ -5,6 +5,7 @@ import type { Server as ColyseusServer } from 'colyseus';
 import {
   BINGO_CLIENT_MESSAGES,
   BINGO_SERVER_MESSAGES,
+  MAX_CARDS_PER_PLAYER,
   ROOM_NAMES,
   type BingoSnapshotPayload,
 } from '@bingo/shared';
@@ -61,7 +62,6 @@ suite('bingo room seating', () => {
 
   afterAll(async () => {
     await colyseus.shutdown();
-    await closeDatabase();
   });
 
   /** Connects a client and returns the snapshots it receives, newest last. */
@@ -174,6 +174,88 @@ suite('bingo room seating', () => {
 
     await first.leave();
     await second.leave();
+    await room.disconnect();
+  });
+});
+
+suite('the purchase window', () => {
+  let colyseus: ColyseusTestServer;
+
+  beforeAll(async () => {
+    const config = {
+      initializeGameServer: (gameServer: ColyseusServer) => {
+        gameServer.define(ROOM_NAMES.bingo, BingoRoom);
+      },
+    } as unknown as Parameters<typeof boot>[0];
+    colyseus = await boot(config, TEST_PORT + 1);
+  });
+
+  afterAll(async () => {
+    // The database pool is shared across every suite in this file, so it is
+    // closed once, by the last one. Closing it in the first left the rest
+    // authenticating against an ended connection.
+    await colyseus.shutdown();
+    await closeDatabase();
+  });
+
+  it('publishes a deadline the client can count down', async () => {
+    const room = await colyseus.createRoom(ROOM_NAMES.bingo);
+    const player = await createPlayer('Acquirente');
+    const client = await colyseus.connectTo(room, { accessToken: player.token });
+    const snapshots: BingoSnapshotPayload[] = [];
+    client.onMessage(BINGO_SERVER_MESSAGES.snapshot, (message) => snapshots.push(message));
+    await room.waitForNextPatch();
+    await wait(300);
+
+    const latest = snapshots.at(-1)!;
+    expect(latest.phase).toBe('CARD_PURCHASE');
+    expect(latest.purchaseEndsAt, 'no deadline published').not.toBeNull();
+    // Inside the configured window, with a little slack for the round trip.
+    const remaining = latest.purchaseEndsAt! - Date.now();
+    expect(remaining).toBeGreaterThan(0);
+    expect(remaining).toBeLessThanOrEqual(latest.config.purchaseSeconds * 1_000 + 2_000);
+
+    await client.leave();
+    await room.disconnect();
+  });
+
+  it('lets a player buy a real fistful of cards', async () => {
+    // A regular buys far more than the three the room used to allow, and marks
+    // them with the machine on the table.
+    const room = await colyseus.createRoom(ROOM_NAMES.bingo);
+    const player = await createPlayer('Regolare');
+    const client = await colyseus.connectTo(room, { accessToken: player.token });
+    const snapshots: BingoSnapshotPayload[] = [];
+    client.onMessage(BINGO_SERVER_MESSAGES.snapshot, (message) => snapshots.push(message));
+    await room.waitForNextPatch();
+    await wait(300);
+
+    expect(snapshots.at(-1)!.config.maxAutomaticCards).toBe(MAX_CARDS_PER_PLAYER);
+    expect(snapshots.at(-1)!.config.maxManualCards).toBe(MAX_CARDS_PER_PLAYER);
+
+    await client.leave();
+    await room.disconnect();
+  });
+
+  it('counts the guests cards in the pot they are playing for', async () => {
+    // crowdFor has always returned npcCards and nobody read it, so a hall of
+    // four hundred played for a pot funded by the humans alone.
+    const room = await colyseus.createRoom(ROOM_NAMES.bingo);
+    const player = await createPlayer('Osservatore');
+    const client = await colyseus.connectTo(room, { accessToken: player.token });
+    const snapshots: BingoSnapshotPayload[] = [];
+    client.onMessage(BINGO_SERVER_MESSAGES.snapshot, (message) => snapshots.push(message));
+    await room.waitForNextPatch();
+    await wait(300);
+
+    const latest = snapshots.at(-1)!;
+    const guests = latest.seating.filter((row) => row.kind === 'NPC').length;
+    expect(guests).toBeGreaterThan(0);
+    // Nobody human has bought anything yet, so every card in the pool is a
+    // guest's — and there is at least one per guest.
+    expect(latest.prizePool.cardsSold).toBeGreaterThanOrEqual(guests);
+
+    await client.leave();
     await room.disconnect();
   });
 });

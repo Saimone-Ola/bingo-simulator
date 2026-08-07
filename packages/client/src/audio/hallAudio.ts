@@ -285,3 +285,22 @@ export function disposeHallAudio(): void {
   context = null;
   void ctx?.close().catch(() => undefined);
 }
+
+/**
+ * The caller's voice.
+ *
+ * Speech synthesis rather than recorded audio: ninety numbers plus the round
+ * openings is more clips than a thesis project should be shipping, and the
+ * browser already has an Italian voice. Silent when the player has muted the
+ * hall, and each line cancels the one before so a fast round does not queue up
+ * a backlog the caller then reads out over the next one.
+ */
+export function announce(line: string, volume = 0.8): void {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(line);
+  utterance.lang = 'it-IT';
+  utterance.rate = 0.9;
+  utterance.volume = Math.min(1, Math.max(0, volume));
+  window.speechSynthesis.speak(utterance);
+}

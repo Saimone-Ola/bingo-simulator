@@ -8,7 +8,9 @@ import {
   bingoConfigSchema,
   DEFAULT_PRIZE_POOL_CONFIG,
   DEFAULT_NPC_DENSITY,
+  DEFAULT_PURCHASE_SECONDS,
   HALL_CAPACITY,
+  MAX_CARDS_PER_PLAYER,
   crowdFor,
   SeatRegistry,
   bingoEmptySchema,
@@ -147,6 +149,15 @@ export class BingoRoom extends Room {
   private nextDrawAt: number | null = null;
   private phaseEndsAt: number | null = null;
   private potCredits = 0;
+  /**
+   * Cards the guests bought this round.
+   *
+   * `crowdFor` has always returned this and nobody read it, so a hall of four
+   * hundred people played for a pot funded by the two humans in it. A guest who
+   * occupies a chair and is counted towards the minimum is a guest who bought
+   * cards; the pot has to say so.
+   */
+  private npcCards = 0;
   private paidCredits = 0;
   /** Cards sold this round, which is what the pool is computed from. */
   private cardsSold = 0;
@@ -159,8 +170,12 @@ export class BingoRoom extends Room {
     startMode: 'ALL_READY',
     countdownSeconds: 10,
     cardPrice: TIER_DEFAULTS.STANDARD.cardPrice,
-    maxManualCards: 3,
-    maxAutomaticCards: 6,
+    // Fifty either way: a regular buys a fistful of cards and marks them with
+    // the machine in front of them, and the automatic marker is exactly what
+    // makes that playable.
+    maxManualCards: MAX_CARDS_PER_PLAYER,
+    maxAutomaticCards: MAX_CARDS_PER_PLAYER,
+    purchaseSeconds: DEFAULT_PURCHASE_SECONDS,
     numberCallInterval: TIER_DEFAULTS.STANDARD.numberCallInterval,
     enabledEvents: [],
     crowdDensity: DEFAULT_NPC_DENSITY,
@@ -331,7 +346,10 @@ export class BingoRoom extends Room {
     this.participants.set(client.sessionId, participant);
     this.byUser.set(auth.userId, client.sessionId);
 
-    if (this.phases.phase === 'WAITING') this.phases.transition('CARD_PURCHASE');
+    if (this.phases.phase === 'WAITING') {
+      this.phases.transition('CARD_PURCHASE');
+      this.beginPurchaseWindow();
+    }
     if (this.phases.phase === 'COUNTDOWN' && !preserved) this.cancelCountdown();
     // Fill the hall before anyone looks at it. This used to run only on
     // reconnect, so the very first player into a fresh room found 512 empty
@@ -429,6 +447,8 @@ export class BingoRoom extends Room {
       round: this.round,
       phase: this.phases.phase,
       phaseChangedAt: this.phases.changedAt,
+      // When the sellers stop taking orders. The client counts this down.
+      purchaseEndsAt: this.phases.phase === 'CARD_PURCHASE' ? this.phaseEndsAt : null,
       countdownEndsAt: this.countdownEndsAt,
       mySessionId: participant.sessionId,
       hostSessionId: this.hostSessionId,
@@ -502,7 +522,7 @@ export class BingoRoom extends Room {
    * and it stays correct while players come and go mid-purchase.
    */
   private prizeBreakdown(): PrizeBreakdown {
-    return computePrizePool(this.cardsSold, {
+    return computePrizePool(this.cardsSold + this.npcCards, {
       ...this.prizeConfig,
       cardPriceCredits: this.config.cardPrice,
     });
@@ -553,6 +573,8 @@ export class BingoRoom extends Room {
             density: this.config.crowdDensity / DEFAULT_NPC_DENSITY,
             maxNpcs: HALL_CAPACITY - humans,
           });
+
+    this.npcCards = crowd.npcCards;
 
     // Guests who are no longer wanted give their chairs back before the rest
     // are seated, or a shrinking crowd would leave the hall permanently full.
@@ -670,7 +692,7 @@ export class BingoRoom extends Room {
     this.evaluateAutomaticStart();
   }
 
-  private updateConfig(client: Client, request: Pick<RoomBingoConfig, 'startMode' | 'countdownSeconds' | 'numberCallInterval' | 'crowdDensity' | 'tier' | 'chaosLevel'>): void {
+  private updateConfig(client: Client, request: Pick<RoomBingoConfig, 'startMode' | 'countdownSeconds' | 'purchaseSeconds' | 'numberCallInterval' | 'crowdDensity' | 'tier' | 'chaosLevel'>): void {
     if (client.sessionId !== this.hostSessionId) return this.reject(client, 'updateConfig', 'host_only');
     if (this.phases.phase !== 'CARD_PURCHASE') return this.reject(client, 'updateConfig', 'configuration_locked');
     const tier = TIER_DEFAULTS[request.tier];
@@ -722,6 +744,18 @@ export class BingoRoom extends Room {
     this.sendAllSnapshots();
   }
 
+  /**
+   * Opens the window the sellers work in.
+   *
+   * A real hall does not wait for everybody to feel ready; it gives the room a
+   * couple of minutes while the sellers go table to table, and then it starts.
+   * The deadline is published so the client can count it down, and the host can
+   * change how long it is.
+   */
+  private beginPurchaseWindow(): void {
+    this.phaseEndsAt = Date.now() + this.config.purchaseSeconds * 1_000;
+  }
+
   private evaluateAutomaticStart(): void {
     if (this.phases.phase !== 'CARD_PURCHASE') return;
     if (!this.hasMinimumPlayers() || !this.allHumansHaveCards()) return;
@@ -753,6 +787,18 @@ export class BingoRoom extends Room {
     if (this.phases.phase === 'PLAYING' && this.nextDrawAt !== null && now >= this.nextDrawAt) {
       if (this.tryStartEvent(now)) return;
       this.drawNumber();
+      return;
+    }
+    if (
+      this.phases.phase === 'CARD_PURCHASE' &&
+      this.phaseEndsAt !== null &&
+      now >= this.phaseEndsAt
+    ) {
+      // Time is up. The room starts if anyone is holding a card; if nobody is,
+      // the window simply reopens rather than starting a round with no players.
+      if (this.hasMinimumPlayers() && this.allHumansHaveCards()) this.beginCountdown();
+      else this.beginPurchaseWindow();
+      this.sendAllSnapshots();
       return;
     }
     if (this.phases.phase === 'RESULTS' && this.phaseEndsAt !== null && now >= this.phaseEndsAt) {
@@ -925,9 +971,9 @@ export class BingoRoom extends Room {
     this.currentNumber = null;
     this.countdownEndsAt = null;
     this.nextDrawAt = null;
-    this.phaseEndsAt = null;
     this.potCredits = 0;
     this.cardsSold = 0;
+    this.npcCards = 0;
     this.paidCredits = 0;
     this.awardedTiers.clear();
     this.issuedSignatures.clear();
@@ -937,6 +983,10 @@ export class BingoRoom extends Room {
       participant.markingMode = 'MANUAL';
       participant.purchaseInProgress = false;
     }
+    // The guests are redrawn for the new round, so the hall is not the same
+    // crowd twice, and the sellers start their round of the tables again.
+    this.seatNpcs();
+    this.beginPurchaseWindow();
     this.sendAllSnapshots();
   }
 
