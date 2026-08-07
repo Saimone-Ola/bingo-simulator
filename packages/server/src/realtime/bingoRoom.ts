@@ -7,6 +7,9 @@ import {
   bingoClaimSchema,
   bingoConfigSchema,
   DEFAULT_PRIZE_POOL_CONFIG,
+  DEFAULT_NPC_DENSITY,
+  HALL_CAPACITY,
+  crowdFor,
   SeatRegistry,
   bingoEmptySchema,
   bingoSeatSchema,
@@ -104,7 +107,17 @@ interface BingoParticipant {
 }
 
 export class BingoRoom extends Room {
-  override maxClients = 20;
+  /**
+   * One player per chair, and the hall has 512.
+   *
+   * This was 20, which was the whole room when the hall was forty seats and is
+   * now four per cent of it: the floor could show five hundred people and the
+   * door let twenty-four in. Derived from the seat list so the two can never
+   * drift again — a room that admits more players than it has chairs would
+   * strand the extras standing, and one that admits fewer is the bug being
+   * fixed here.
+   */
+  override maxClients = HALL_CAPACITY;
 
   /**
    * Who is sitting where.
@@ -142,7 +155,7 @@ export class BingoRoom extends Room {
 
   private config: RoomBingoConfig = {
     minPlayers: 2,
-    maxPlayers: 20,
+    maxPlayers: HALL_CAPACITY,
     startMode: 'ALL_READY',
     countdownSeconds: 10,
     cardPrice: TIER_DEFAULTS.STANDARD.cardPrice,
@@ -150,7 +163,7 @@ export class BingoRoom extends Room {
     maxAutomaticCards: 6,
     numberCallInterval: TIER_DEFAULTS.STANDARD.numberCallInterval,
     enabledEvents: [],
-    npcCount: 1,
+    crowdDensity: DEFAULT_NPC_DENSITY,
     tier: 'STANDARD',
     chaosLevel: 'LIGHT',
   };
@@ -384,22 +397,22 @@ export class BingoRoom extends Room {
       balance: participant.balance,
     }));
 
-    const npcs: BingoPlayerSummary[] = Array.from({ length: this.config.npcCount }, (_value, index) => ({
-      sessionId: `npc-${index + 1}`,
-      userId: `npc-${index + 1}`,
-      displayName: NPC_NAMES[index] ?? `Ospite ${index + 1}`,
-      level: 1 + index * 2,
-      ready: true,
-      cardCount: 1,
-      markingMode: 'AUTOMATIC',
-      appearance: NPC_APPEARANCES[index] ?? NPC_APPEARANCES[0]!,
-      isHost: false,
-      isNpc: true,
-      connected: true,
-      loading: false,
-      balance: 0,
-    }));
-    return [...humans, ...npcs];
+    // NPCs are deliberately *not* here. A hall of five hundred would put 180 KiB
+    // of guest summaries into every snapshot, re-sent on every number called,
+    // for people whose only changing property is which chair they are in. They
+    // travel in the seating chart instead — one row each — and the client
+    // derives their faces from their ids, which is why hallPopulation is shared
+    // and deterministic rather than a client-side sprinkle.
+    return humans;
+  }
+
+  /** Guest ids are stable for a round, so faces and cards stay put. */
+  private npcId(index: number): string {
+    return `npc-${this.round}-${index + 1}`;
+  }
+
+  private npcName(index: number): string {
+    return NPC_NAMES[index % NPC_NAMES.length] ?? `Ospite ${index + 1}`;
   }
 
   private snapshotFor(participant: BingoParticipant): BingoSnapshotPayload {
@@ -494,17 +507,56 @@ export class BingoRoom extends Room {
     this.broadcast(BINGO_SERVER_MESSAGES.seating, payload);
   }
 
-  /** Puts the NPCs in chairs, so the hall looks occupied rather than staged. */
+  /**
+   * Fills the hall with guests, so it looks like a Bingo hall rather than a
+   * meeting room with a stage in it.
+   *
+   * How many is not a constant: `crowdFor` varies it with the hour and with the
+   * round, so a player who comes back at nine in the evening finds a fuller
+   * room than the one they left at three in the afternoon. The host's setting
+   * scales that rather than replacing it — a fixed count was the old behaviour
+   * and it was capped at six, which is why a hall of 512 chairs never had more
+   * than about two dozen people in it.
+   */
   private seatNpcs(): void {
     const now = Date.now();
-    for (const npc of this.summaries().filter((player) => player.isNpc)) {
-      if (this.seats.seatFor(npc.userId)) continue;
+    const humans = this.participants.size;
+    const crowd = crowdFor(`${this.seed}:${this.round}`, new Date(now), {
+      humans,
+      density: this.config.crowdDensity / DEFAULT_NPC_DENSITY,
+      maxNpcs: HALL_CAPACITY - humans,
+    });
+
+    // Guests who are no longer wanted give their chairs back before the rest
+    // are seated, or a shrinking crowd would leave the hall permanently full.
+    for (const row of this.seats.snapshot()) {
+      if (row.kind !== 'NPC') continue;
+      const index = this.npcIndexOf(row.occupantId);
+      if (index === null || index >= crowd.npcCount) this.seats.release(row.occupantId);
+    }
+
+    for (let index = 0; index < crowd.npcCount; index += 1) {
+      const id = this.npcId(index);
+      if (this.seats.seatFor(id)) continue;
       const free = this.seats.freeSeats(now);
-      // NPCs take the back tables first, leaving the good seats for players.
+      // Guests take the back tables first, leaving the good seats for players.
       const target = free[free.length - 1];
       if (!target) return;
-      this.seats.claim(target, npc.userId, npc.displayName, 'NPC', now);
+      this.seats.claim(target, id, this.npcName(index), 'NPC', now);
     }
+  }
+
+  /** Guests currently in chairs, which is what "is the room busy enough" means. */
+  private seatedNpcCount(): number {
+    return this.seats.snapshot().filter((row) => row.kind === 'NPC').length;
+  }
+
+  /** The index inside `npc-<round>-<index>`, or null if it is not ours. */
+  private npcIndexOf(occupantId: string): number | null {
+    const prefix = `npc-${this.round}-`;
+    if (!occupantId.startsWith(prefix)) return null;
+    const parsed = Number(occupantId.slice(prefix.length));
+    return Number.isInteger(parsed) && parsed > 0 ? parsed - 1 : null;
   }
 
   private sendSnapshot(client: Client): void {
@@ -583,7 +635,7 @@ export class BingoRoom extends Room {
     this.evaluateAutomaticStart();
   }
 
-  private updateConfig(client: Client, request: Pick<RoomBingoConfig, 'startMode' | 'countdownSeconds' | 'numberCallInterval' | 'npcCount' | 'tier' | 'chaosLevel'>): void {
+  private updateConfig(client: Client, request: Pick<RoomBingoConfig, 'startMode' | 'countdownSeconds' | 'numberCallInterval' | 'crowdDensity' | 'tier' | 'chaosLevel'>): void {
     if (client.sessionId !== this.hostSessionId) return this.reject(client, 'updateConfig', 'host_only');
     if (this.phases.phase !== 'CARD_PURCHASE') return this.reject(client, 'updateConfig', 'configuration_locked');
     const tier = TIER_DEFAULTS[request.tier];
@@ -646,7 +698,7 @@ export class BingoRoom extends Room {
   }
 
   private hasMinimumPlayers(): boolean {
-    return this.participants.size + this.config.npcCount >= this.config.minPlayers;
+    return this.participants.size + this.seatedNpcCount() >= this.config.minPlayers;
   }
 
   private allHumansHaveCards(): boolean {

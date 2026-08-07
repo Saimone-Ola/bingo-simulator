@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_NPC_DENSITY,
   HALL_CAPACITY,
   HALL_SEATS,
   HALL_TABLES,
@@ -162,5 +163,67 @@ describe('what the crowd bought', () => {
 
   it('buys more cards when more guests are present', () => {
     expect(npcCardTotal('x', 200)).toBeGreaterThan(npcCardTotal('x', 20));
+  });
+});
+
+describe('the crowd the room actually seats', () => {
+  /**
+   * These guard the wiring, not the arithmetic.
+   *
+   * `crowdFor` was written, tested and then never called: the room seated a
+   * fixed `npcCount` capped at six, so a hall with 512 chairs held about two
+   * dozen people whatever the hour. The numbers below are the ones a player
+   * sees, so they are asserted against the capacity of the room rather than
+   * against a literal.
+   */
+  const density = (notch: number) => notch / DEFAULT_NPC_DENSITY;
+
+  it('fills a real fraction of the hall at the neutral setting', () => {
+    // Evening: the hall should be visibly busy, not a handful of guests.
+    const crowd = crowdFor('round-1', new Date('2026-08-06T20:30:00'), {
+      density: density(DEFAULT_NPC_DENSITY),
+    });
+    expect(crowd.npcCount).toBeGreaterThan(HALL_CAPACITY * 0.4);
+    expect(crowd.npcCount).toBeLessThanOrEqual(HALL_CAPACITY);
+  });
+
+  it('is still a room and not a cathedral at three in the morning', () => {
+    const crowd = crowdFor('round-1', new Date('2026-08-06T03:00:00'), {
+      density: density(DEFAULT_NPC_DENSITY),
+    });
+    expect(crowd.npcCount).toBeGreaterThan(0);
+    expect(crowd.npcCount).toBeLessThan(HALL_CAPACITY * 0.2);
+  });
+
+  it('follows the host dial in both directions', () => {
+    const at = new Date('2026-08-06T20:30:00');
+    const counts = [0, 1, 3, 5, 6].map(
+      (notch) => crowdFor('round-1', at, { density: density(notch) }).npcCount,
+    );
+    for (let index = 1; index < counts.length; index += 1) {
+      expect(counts[index]!, `notch ${index}`).toBeGreaterThanOrEqual(counts[index - 1]!);
+    }
+    // The bottom notch is an empty hall, which is what the label promises.
+    expect(counts[0]).toBeLessThan(counts[2]!);
+    expect(counts.at(-1)!).toBeGreaterThan(counts[2]!);
+  });
+
+  it('never seats a guest in a chair a player needs', () => {
+    // The room admits one client per chair; guests must give way to all of them.
+    const crowd = crowdFor('round-1', new Date('2026-08-06T21:00:00'), {
+      humans: 40,
+      density: density(6),
+      maxNpcs: HALL_CAPACITY - 40,
+    });
+    expect(crowd.npcCount + 40).toBeLessThanOrEqual(HALL_CAPACITY);
+  });
+
+  it('leaves the hall alone when a full house of players turns up', () => {
+    const crowd = crowdFor('round-1', new Date('2026-08-06T21:00:00'), {
+      humans: HALL_CAPACITY,
+      density: density(6),
+      maxNpcs: 0,
+    });
+    expect(crowd.npcCount).toBe(0);
   });
 });

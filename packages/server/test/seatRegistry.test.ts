@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  HALL_CAPACITY,
   HALL_SEATS,
   HALL_TABLES,
   MAX_RESERVATIONS_PER_PLAYER,
@@ -204,8 +205,25 @@ describe('the hall itself', () => {
   });
 
   it('seats everyone the room will hold', () => {
-    // maxClients is 20; a hall that cannot seat a full room would strand people.
-    expect(HALL_SEATS.length).toBeGreaterThanOrEqual(20);
+    // The room admits HALL_CAPACITY clients, so the hall must have that many
+    // chairs: a room that lets in more people than it can seat strands the
+    // extras standing. It used to admit 20 into a hall of 512 — the opposite
+    // failure, and the one players actually hit.
+    expect(HALL_CAPACITY).toBe(HALL_SEATS.length);
+    expect(HALL_SEATS.length).toBeGreaterThanOrEqual(500);
+  });
+
+  it('hands out every one of those seats before it runs out', () => {
+    // A capacity nobody can reach is not a capacity. Filling the hall to the
+    // last chair is the claim, so it is the thing asserted.
+    const registry = new SeatRegistry();
+    for (let index = 0; index < HALL_CAPACITY; index += 1) {
+      const seatId = registry.freeSeats(T0)[0];
+      expect(seatId, `ran out after ${index} of ${HALL_CAPACITY}`).toBeDefined();
+      expect(registry.claim(seatId!, `p${index}`, `P${index}`, 'PLAYER', T0).ok).toBe(true);
+    }
+    expect(registry.freeSeats(T0)).toHaveLength(0);
+    expect(registry.snapshot()).toHaveLength(HALL_CAPACITY);
   });
 
   it('places every seat on its table ring', () => {

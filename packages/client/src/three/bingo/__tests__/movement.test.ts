@@ -14,6 +14,7 @@ import {
   SPRINT_SPEED,
   WALK_SPEED,
   createMovementState,
+  createPoseLatch,
   resolveCollider,
   resolveCollisions,
   shortestAngle,
@@ -227,5 +228,46 @@ describe('shortestAngle', () => {
   it('turns the short way around the circle', () => {
     expect(shortestAngle(0.1, Math.PI * 2 - 0.1)).toBeCloseTo(-0.2, 6);
     expect(shortestAngle(Math.PI * 2 - 0.1, 0.1)).toBeCloseTo(0.2, 6);
+  });
+});
+
+describe('sitting down and standing up', () => {
+  /**
+   * The bug this exists for: you sat down, pressed the key to get up, and were
+   * dragged back beside the chair. The seat arrives rebuilt on every room
+   * snapshot, so anything keyed on its identity fires several times a second.
+   */
+  it('moves the body once per transition, however often the snapshot arrives', () => {
+    const latch = createPoseLatch();
+    expect(latch.shouldApply('t0s0', 'SEATED')).toBe(true);
+    // Twenty more snapshots, same seat, same stance: nothing to do.
+    for (let patch = 0; patch < 20; patch += 1) {
+      expect(latch.shouldApply('t0s0', 'SEATED'), `patch ${patch}`).toBe(false);
+    }
+  });
+
+  it('fires again when the player actually stands up', () => {
+    const latch = createPoseLatch();
+    latch.shouldApply('t0s0', 'SEATED');
+    expect(latch.shouldApply('t0s0', 'STANDING')).toBe(true);
+    // And then leaves them alone, so they can walk away from the table.
+    for (let patch = 0; patch < 20; patch += 1) {
+      expect(latch.shouldApply('t0s0', 'STANDING'), `patch ${patch}`).toBe(false);
+    }
+  });
+
+  it('fires when the player changes chair', () => {
+    const latch = createPoseLatch();
+    latch.shouldApply('t0s0', 'SEATED');
+    expect(latch.shouldApply('t3s5', 'SEATED')).toBe(true);
+  });
+
+  it('treats having no seat as a state of its own', () => {
+    const latch = createPoseLatch();
+    expect(latch.shouldApply(null, 'STANDING')).toBe(true);
+    expect(latch.shouldApply(null, 'STANDING')).toBe(false);
+    expect(latch.shouldApply('t0s0', 'SEATED')).toBe(true);
+    // Standing up releases the seat, so the id goes away with the stance.
+    expect(latch.shouldApply(null, 'STANDING')).toBe(true);
   });
 });

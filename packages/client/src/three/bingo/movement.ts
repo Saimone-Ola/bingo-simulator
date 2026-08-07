@@ -164,3 +164,28 @@ export function stepMovement(
 // Smoothing lives in ../damping and is re-exported here so the callers that
 // already import it from this module keep working.
 export { damp, dampAngle, shortestAngle } from '../damping';
+
+/**
+ * Fires once when the player actually sits down, stands up or changes chair.
+ *
+ * Sitting and standing move the body, and moving the body is a thing that must
+ * happen on the *transition* and never again. The seat arrives as a fresh
+ * object on every room snapshot, so a check based on object identity fires
+ * several times a second: while standing it dragged the player back to the spot
+ * beside the chair on every patch, which read as being unable to get up at all,
+ * and while seated it reset the view to face the table so you could not look
+ * around. Both are the same mistake, and this is the thing that prevents it.
+ *
+ * A seat id and a stance are values, so this compares values.
+ */
+export function createPoseLatch(): { shouldApply: (seatId: string | null, stance: PlayerStance) => boolean } {
+  let applied: string | null = null;
+  return {
+    shouldApply(seatId, stance) {
+      const pose = `${seatId ?? ''}:${stance}`;
+      if (applied === pose) return false;
+      applied = pose;
+      return true;
+    },
+  };
+}

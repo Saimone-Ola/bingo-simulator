@@ -6,6 +6,7 @@ import type {
   BingoPhase,
   BingoPlayerSummary,
   ItalianBingoCard,
+  SeatOccupancy,
 } from '@bingo/shared';
 import { resolveAvatarAppearance } from '@bingo/shared';
 import { SceneBoundary } from '../components/SceneBoundary';
@@ -19,7 +20,7 @@ import RoomNpc, { WanderingWaiter } from './bingo/RoomNpc';
 import RoundBingoTable, { TableTablet } from './bingo/RoundBingoTable';
 import BingoChair from './bingo/BingoChair';
 import PlayerMovementController, {
-  type InteractionTarget,
+  type InteractionFocus,
 } from './bingo/PlayerMovementController';
 import { crowdAnimation, moodFor } from './bingo/eventChoreography';
 import { buildOccupancy } from './bingo/occupants';
@@ -27,7 +28,14 @@ import CrowdInstances from './bingo/CrowdInstances';
 import HallNumberBoards from './bingo/HallNumberBoards';
 import InstancedFurniture from './bingo/InstancedFurniture';
 import { budgetFor, selectCrowdTiers } from './bingo/crowdLod';
-import { SEATS, SPAWN, STANDING_EYE_HEIGHT, TABLES, TABLE_TOP_HEIGHT } from './bingo/hallLayout';
+import {
+  SEATS,
+  SPAWN,
+  STANDING_EYE_HEIGHT,
+  TABLES,
+  TABLE_TOP_HEIGHT,
+  type SeatPlacement,
+} from './bingo/hallLayout';
 import { DECK_RADIUS } from './bingo/cardLayout';
 import type { PlayerStance } from './bingo/movement';
 import { RENDER_PROFILES, type HallQuality } from '../store/hallSettings';
@@ -58,6 +66,10 @@ export interface BingoRoomSceneProps {
   mySessionId: string;
   /** Seat the server put this player in, or null while they are standing. */
   mySeatId: string | null;
+  /** This client's own user id, used to find itself in the seating chart. */
+  myUserId: string | null;
+  /** Who the server says is sitting where. The floor is drawn from this. */
+  seating: readonly SeatOccupancy[];
   myCards: readonly ItalianBingoCard[];
   currentNumber: number | null;
   drawnNumbers: readonly number[];
@@ -69,6 +81,8 @@ export interface BingoRoomSceneProps {
   manualMarking: boolean;
   focusCard: boolean;
   stance: PlayerStance;
+  /** Chairs nobody is in, so walking up to one and pressing E works. */
+  freeSeats: readonly SeatPlacement[];
   quality: HallQuality;
   shadows: boolean;
   reducedMotion: boolean;
@@ -78,8 +92,8 @@ export interface BingoRoomSceneProps {
   onSelectCard: (index: number) => void;
   onSelectMarker: (color: string) => void;
   onMarkCell: (cardIndex: number, cellIndex: number, marked: boolean) => void;
-  onInteract: (target: InteractionTarget) => void;
-  onTargetChange: (target: InteractionTarget) => void;
+  onInteract: (focus: InteractionFocus) => void;
+  onTargetChange: (focus: InteractionFocus) => void;
   onFootstep: () => void;
   onRequestExitPointerLock: () => void;
   onSceneError?: (error: Error) => void;
@@ -245,12 +259,24 @@ function Scene(props: BingoRoomSceneProps) {
   const mood = useMemo(() => moodFor(phase, activeEvent, celebrating), [phase, activeEvent, celebrating]);
   const occupancy = useMemo(
     () =>
-      buildOccupancy([...players], mySessionId, {
-        ambientCount: props.ambientGuests,
-        roomSeed: props.roomCode,
-        mySeatId: props.mySeatId,
-      }),
-    [players, mySessionId, props.ambientGuests, props.roomCode, props.mySeatId],
+      buildOccupancy(
+        [...players],
+        {
+          ambientCount: props.ambientGuests,
+          roomSeed: props.roomCode,
+          mySeatId: props.mySeatId,
+          myUserId: props.myUserId,
+        },
+        props.seating,
+      ),
+    [
+      players,
+      props.ambientGuests,
+      props.roomCode,
+      props.mySeatId,
+      props.myUserId,
+      props.seating,
+    ],
   );
 
   const me = useMemo(
@@ -376,6 +402,7 @@ function Scene(props: BingoRoomSceneProps) {
       <PlayerMovementController
         seat={localSeat}
         stance={props.stance}
+        freeSeats={props.freeSeats}
         eyeHeightScale={eyeHeightScale}
         reducedMotion={reducedMotion}
         headBob={props.headBob}
@@ -411,7 +438,7 @@ function Scene(props: BingoRoomSceneProps) {
         highlighted={phase === 'CARD_PURCHASE' && (me?.cardCount ?? 0) === 0}
         reducedMotion={reducedMotion}
         shadows={shadows}
-        onActivate={() => props.onInteract('RECEPTION')}
+        onActivate={() => props.onInteract({ target: 'RECEPTION', seatId: null })}
       />
 
       {furniture.nearTables.map((table) => (
@@ -495,7 +522,7 @@ function Scene(props: BingoRoomSceneProps) {
           ]}
           rotationY={localSeat.facing + Math.PI}
           active={(me?.cardCount ?? 0) === 0}
-          onActivate={() => props.onInteract('RECEPTION')}
+          onActivate={() => props.onInteract({ target: 'RECEPTION', seatId: null })}
         />
       )}
 
@@ -576,5 +603,5 @@ function SceneDisposer() {
 }
 
 /** Re-exported so the page can talk about interaction targets without the 3D import. */
-export type { InteractionTarget } from './bingo/PlayerMovementController';
+export type { InteractionFocus, InteractionTarget } from './bingo/PlayerMovementController';
 export type { PlayerStance } from './bingo/movement';

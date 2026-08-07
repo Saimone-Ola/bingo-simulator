@@ -13,8 +13,27 @@
  * the crowd is part of the round.
  */
 
-/** Seats the hall physically has. Kept here to avoid a circular import. */
-export const HALL_CAPACITY = 512;
+import { HALL_SEATS } from './bingoSeating';
+
+/**
+ * Seats the hall physically has.
+ *
+ * Derived, not typed in. It was a literal 512 with a note about a circular
+ * import — there is no cycle, `bingoSeating` imports nothing from here — and a
+ * hand-copied capacity is exactly the sort of number that survives a resize of
+ * the thing it is supposed to describe.
+ */
+export const HALL_CAPACITY = HALL_SEATS.length;
+
+/**
+ * The crowd dial's neutral notch.
+ *
+ * A host setting of this value means "leave the hall as busy as it would
+ * normally be"; below thins it out, above packs it. Shared so the client's
+ * slider and the server's arithmetic cannot disagree about which notch is
+ * neutral.
+ */
+export const DEFAULT_NPC_DENSITY = 3;
 
 /**
  * Fraction of capacity occupied at each hour, local time.

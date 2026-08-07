@@ -8,9 +8,9 @@
  * during a two player thesis demo.
  */
 
-import type { AvatarAppearance, BingoPlayerSummary } from '@bingo/shared';
+import type { AvatarAppearance, BingoPlayerSummary, SeatOccupancy } from '@bingo/shared';
 import type { CharacterPersonality } from '../ProceduralCharacter';
-import { SEATS, assignSeats, freeSeats, type SeatPlacement } from './hallLayout';
+import { SEATS, freeSeats, type SeatPlacement } from './hallLayout';
 
 export type OccupantKind = 'PLAYER' | 'NPC' | 'AMBIENT';
 
@@ -128,6 +128,8 @@ export interface OccupancyOptions {
    * hall rather than at the door.
    */
   readonly mySeatId?: string | null;
+  /** This client's own user id, to find itself in the seating chart. */
+  readonly myUserId?: string | null;
 }
 
 export interface HallOccupancy {
@@ -137,40 +139,52 @@ export interface HallOccupancy {
 }
 
 /**
- * Seats everyone the server knows about, then tops the room up with ambient
- * guests. Server occupants always come first so a real player never loses their
- * chair to a decoration when the ambient density changes.
+ * Draws everyone where the server says they are, then tops the room up with
+ * ambient guests.
+ *
+ * The seating chart is the authority. This module used to assign chairs itself
+ * from the player list, which meant the hall drew people in seats the room had
+ * never given them: the overlay map and the 3D floor disagreed about where you
+ * were sitting, and two clients disagreed with each other. The registry that
+ * settles who gets which chair is the same one drawn here.
+ *
+ * Drawing from the chart is also what makes a full hall affordable. A guest's
+ * appearance is derived from their id rather than sent, so five hundred of them
+ * cost one row each — a seat and a name — instead of a full player summary.
  */
 export function buildOccupancy(
   players: readonly BingoPlayerSummary[],
-  mySessionId: string,
   options: OccupancyOptions,
+  seating: readonly SeatOccupancy[] = [],
 ): HallOccupancy {
-  const seatAssignment = assignSeats(players.map((player) => player.sessionId));
   const occupants: HallOccupant[] = [];
   const taken = new Set<string>();
+  const byUserId = new Map(players.map((player) => [player.userId, player]));
+  const seatById = new Map(SEATS.map((seat) => [seat.id, seat]));
 
-  for (const player of players) {
-    const isLocal = player.sessionId === mySessionId;
-    // A standing player has no chair to draw them in.
-    if (isLocal && options.mySeatId === null) continue;
-    const seat = isLocal && options.mySeatId
-      ? (SEATS.find((entry) => entry.id === options.mySeatId) ?? seatAssignment.get(player.sessionId))
-      : seatAssignment.get(player.sessionId);
+  for (const row of seating) {
+    const seat = seatById.get(row.seatId);
     if (!seat) continue;
+    const player = byUserId.get(row.occupantId);
+    const isLocal = row.occupantId === options.myUserId;
+    // A standing player has no chair to draw them in.
+    if (isLocal && !options.mySeatId) continue;
     taken.add(seat.id);
+    const seed = stableHash(row.occupantId);
     occupants.push({
-      id: player.sessionId,
-      displayName: player.displayName,
-      appearance: player.appearance ?? DEFAULT_APPEARANCE,
-      kind: player.isNpc ? 'NPC' : 'PLAYER',
-      personality: personalityFor(player.sessionId),
+      id: player?.sessionId ?? row.occupantId,
+      displayName: row.displayName,
+      // A guest the server only names gets a face derived from that name's id,
+      // which is deterministic, so every client draws the same person.
+      appearance: player?.appearance ?? (player ? DEFAULT_APPEARANCE : ambientAppearance(seed)),
+      kind: row.kind === 'NPC' ? 'NPC' : 'PLAYER',
+      personality: personalityFor(row.occupantId),
       seat,
-      ready: player.ready,
-      cardCount: player.cardCount,
-      isHost: player.isHost,
+      ready: player?.ready ?? true,
+      cardCount: player?.cardCount ?? 1,
+      isHost: player?.isHost ?? false,
       isLocal,
-      phase: (stableHash(player.sessionId) % 1000) / 1000,
+      phase: (seed % 1000) / 1000,
     });
   }
 

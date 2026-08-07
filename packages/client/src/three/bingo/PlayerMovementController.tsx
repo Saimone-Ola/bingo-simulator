@@ -7,13 +7,15 @@ import {
   SEATED_EYE_HEIGHT,
   STANDING_EYE_HEIGHT,
   SPAWN,
-  distanceTo,
   isNearReception,
+  nearestSeat,
   standingSpotForSeat,
   type SeatPlacement,
 } from './hallLayout';
+import { SEAT_INTERACT_RADIUS } from '@bingo/shared';
 import {
   createMovementState,
+  createPoseLatch,
   damp,
   dampAngle,
   stepMovement,
@@ -33,6 +35,18 @@ import {
 
 export type InteractionTarget = 'RECEPTION' | 'SIT' | 'STAND' | null;
 
+/**
+ * What the player is pointed at, with the detail needed to act on it.
+ *
+ * 'SIT' carries the chair: sitting down is a request to the server for one
+ * specific seat, and "the seat I am standing next to" is knowledge only the
+ * controller has.
+ */
+export interface InteractionFocus {
+  target: InteractionTarget;
+  seatId: string | null;
+}
+
 const LOOK_SENSITIVITY = 0.0022;
 const SEATED_YAW_RANGE = 1.5;
 const PITCH_MIN = -1.15;
@@ -41,6 +55,13 @@ const PITCH_MAX = 0.72;
 export interface PlayerMovementControllerProps {
   seat: SeatPlacement | null;
   stance: PlayerStance;
+  /**
+   * Chairs nobody is in. Sitting down means walking up to one and pressing E,
+   * so the controller needs to know which ones are actually available — before
+   * this it could only offer the seat the player already had, which meant the
+   * only way to get a first seat was the overlay map.
+   */
+  freeSeats: readonly SeatPlacement[];
   eyeHeightScale: number;
   reducedMotion: boolean;
   headBob: boolean;
@@ -48,8 +69,8 @@ export interface PlayerMovementControllerProps {
   focusStage: boolean;
   /** Blocks input while a modal panel owns the keyboard. */
   inputEnabled: boolean;
-  onInteract: (target: InteractionTarget) => void;
-  onTargetChange: (target: InteractionTarget) => void;
+  onInteract: (focus: InteractionFocus) => void;
+  onTargetChange: (focus: InteractionFocus) => void;
   onFootstep: () => void;
   onRequestExitPointerLock: () => void;
 }
@@ -57,6 +78,7 @@ export interface PlayerMovementControllerProps {
 export function PlayerMovementController({
   seat,
   stance,
+  freeSeats,
   eyeHeightScale,
   reducedMotion,
   headBob,
@@ -75,7 +97,8 @@ export function PlayerMovementController({
   const pitchTarget = useRef<number>(-0.06);
   const bobPhase = useRef(0);
   const lastFootstep = useRef(0);
-  const target = useRef<InteractionTarget>(null);
+  const focus = useRef<InteractionFocus>({ target: null, seatId: null });
+  const freeSeatsRef = useRef<readonly SeatPlacement[]>(freeSeats);
   const seatRef = useRef<SeatPlacement | null>(seat);
   const stanceRef = useRef<PlayerStance>(stance);
   const enabledRef = useRef(inputEnabled);
@@ -86,35 +109,49 @@ export function PlayerMovementController({
 
   seatRef.current = seat;
   stanceRef.current = stance;
+  freeSeatsRef.current = freeSeats;
   enabledRef.current = inputEnabled;
   interactRef.current = onInteract;
   targetChangeRef.current = onTargetChange;
   footstepRef.current = onFootstep;
   exitLockRef.current = onRequestExitPointerLock;
 
-  // Seat changes teleport the body: the server decides where a player sits, and
-  // walking them there would desynchronise the view from the snapshot.
+  /**
+   * Sitting down and standing up move the body. Each happens once.
+   *
+   * This has to fire on the *transition*, not whenever the effect's inputs
+   * change identity. The seat object is rebuilt from the room snapshot on every
+   * server patch, so an effect keyed on it re-ran several times a second — and
+   * since it re-ran while the player was standing, it dragged them back to the
+   * spot beside their chair on every patch. You could press the key, watch
+   * yourself stand, and never get further than the chair you had just left.
+   * Seated it was just as bad: the yaw was reset to face the table each patch,
+   * so you could not look around either.
+   *
+   * Keyed on the seat's *id* and the stance, which only change when the player
+   * actually sits down, stands up or moves chair.
+   */
+  const poseLatch = useMemo(() => createPoseLatch(), []);
   useEffect(() => {
-    if (stance !== 'SEATED' || !seat) return;
-    movement.x = seat.x;
-    movement.z = seat.z;
-    movement.velocityX = 0;
-    movement.velocityZ = 0;
-    yawTarget.current = seat.facing + Math.PI;
-    yaw.current = seat.facing + Math.PI;
-    pitchTarget.current = -0.42;
-  }, [movement, seat, stance]);
+    if (!poseLatch.shouldApply(seat?.id ?? null, stance)) return;
+    if (!seat) return;
 
-  useEffect(() => {
-    if (stance !== 'STANDING' || !seat) return;
-    // Standing up steps back from the table instead of clipping through it.
-    const spot = standingSpotForSeat(seat);
-    movement.x = spot.x;
-    movement.z = spot.z;
+    if (stance === 'SEATED') {
+      movement.x = seat.x;
+      movement.z = seat.z;
+      yawTarget.current = seat.facing + Math.PI;
+      yaw.current = seat.facing + Math.PI;
+      pitchTarget.current = -0.42;
+    } else {
+      // Standing up steps back from the table instead of clipping through it.
+      const spot = standingSpotForSeat(seat);
+      movement.x = spot.x;
+      movement.z = spot.z;
+      pitchTarget.current = -0.06;
+    }
     movement.velocityX = 0;
     movement.velocityZ = 0;
-    pitchTarget.current = -0.06;
-  }, [movement, seat, stance]);
+  }, [movement, poseLatch, seat, stance]);
 
   useEffect(() => attachKeyboard(), []);
 
@@ -167,7 +204,7 @@ export function PlayerMovementController({
       if (element && (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA')) return;
       if (event.code === 'KeyE') {
         event.preventDefault();
-        if (enabledRef.current) interactRef.current(target.current);
+        if (enabledRef.current) interactRef.current(focus.current);
       }
       if (event.code === 'Escape') {
         exitLockRef.current();
@@ -270,14 +307,28 @@ export function PlayerMovementController({
     // Interaction prompt, recomputed every frame but only published on change so
     // the HUD re-renders a handful of times per minute instead of per frame.
     let next: InteractionTarget = null;
-    if (seated) next = 'STAND';
-    else if (isNearReception(movement.x, movement.z)) next = 'RECEPTION';
-    else if (currentSeat && distanceTo(movement.x, movement.z, currentSeat.x, currentSeat.z) < 1.5) {
-      next = 'SIT';
+    let nextSeatId: string | null = null;
+    if (seated) {
+      next = 'STAND';
+      nextSeatId = currentSeat?.id ?? null;
+    } else if (isNearReception(movement.x, movement.z)) {
+      next = 'RECEPTION';
+    } else {
+      // Any free chair within reach, not only one the server already gave us.
+      const reachable = nearestSeat(
+        movement.x,
+        movement.z,
+        freeSeatsRef.current,
+        SEAT_INTERACT_RADIUS,
+      );
+      if (reachable) {
+        next = 'SIT';
+        nextSeatId = reachable.id;
+      }
     }
-    if (next !== target.current) {
-      target.current = next;
-      targetChangeRef.current(next);
+    if (next !== focus.current.target || nextSeatId !== focus.current.seatId) {
+      focus.current = { target: next, seatId: nextSeatId };
+      targetChangeRef.current(focus.current);
     }
   });
 
