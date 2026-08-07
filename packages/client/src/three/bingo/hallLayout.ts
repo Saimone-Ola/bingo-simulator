@@ -243,47 +243,6 @@ export function tableByIndex(index: number): TablePlacement | undefined {
   return TABLES[index];
 }
 
-/**
- * Deterministically hands every occupant of the room a chair.
- *
- * The order of `occupantIds` comes straight from the server snapshot, which is
- * built identically for every client, so all players agree on who sits where
- * without adding a single byte to the protocol.
- */
-/**
- * Order seats are handed out in.
- *
- * Filling sequentially puts everyone on the first tables, which in a small room
- * is fine and in a forty-metre hall means a player walks in to find the whole
- * crowd at the far end and the room around them empty. Stepping through the
- * seat list by a stride coprime with its length visits every seat exactly once
- * while spreading arrivals across the whole floor, so a half-full hall looks
- * half full everywhere rather than full at one end.
- */
-const SEAT_FILL_STRIDE = 37;
-
-const SEAT_FILL_ORDER: readonly SeatPlacement[] = (() => {
-  const order: SeatPlacement[] = [];
-  for (let step = 0; step < SEATS.length; step += 1) {
-    const seat = SEATS[(step * SEAT_FILL_STRIDE) % SEATS.length];
-    if (seat) order.push(seat);
-  }
-  return order;
-})();
-
-export function assignSeats(occupantIds: readonly string[]): Map<string, SeatPlacement> {
-  const assignment = new Map<string, SeatPlacement>();
-  let cursor = 0;
-  for (const id of occupantIds) {
-    if (assignment.has(id)) continue;
-    const seat = SEAT_FILL_ORDER[cursor % SEAT_FILL_ORDER.length];
-    cursor += 1;
-    if (seat === undefined) continue;
-    assignment.set(id, seat);
-  }
-  return assignment;
-}
-
 /** Seats nobody occupies, used for decorative props and ambient guests. */
 export function freeSeats(taken: ReadonlySet<string>): readonly SeatPlacement[] {
   return SEATS.filter((seat) => !taken.has(seat.id));

@@ -9,7 +9,6 @@ import {
   SPAWN,
   STAGE,
   TABLES,
-  assignSeats,
   freeSeats,
   isNearReception,
   nearestSeat,
@@ -81,34 +80,35 @@ describe('hall geometry', () => {
   });
 });
 
-describe('assignSeats', () => {
-  it('gives every occupant a distinct chair', () => {
-    const ids = Array.from({ length: 20 }, (_value, index) => `player-${index}`);
-    const assignment = assignSeats(ids);
-    expect(assignment.size).toBe(ids.length);
-    expect(new Set([...assignment.values()].map((seat) => seat.id)).size).toBe(ids.length);
-  });
-
-  it('is deterministic, so every client seats the room identically', () => {
-    const ids = ['a', 'b', 'c', 'd'];
-    const first = assignSeats(ids);
-    const second = assignSeats(ids);
-    for (const id of ids) {
-      expect(first.get(id)?.id).toBe(second.get(id)?.id);
+describe('table numbering', () => {
+  /**
+   * One number, three places it shows up: the sign painted on the table in the
+   * hall, the circle on the overhead map, and the seat ids the server hands
+   * out. A player reading "26" on the table and "36" on the map has no way to
+   * tell which one is lying, so they have to be the same number by
+   * construction.
+   */
+  it('paints the same number on the table, the map and the seat id', () => {
+    for (const table of TABLES) {
+      expect(table.label, `table ${table.index}`).toBe(table.index + 1);
+    }
+    for (const seat of SEATS) {
+      const [, tableIndex] = /^t(\d+)s\d+$/.exec(seat.id) ?? [];
+      expect(Number(tableIndex), seat.id).toBe(seat.tableIndex);
+      expect(TABLES[seat.tableIndex]?.label, seat.id).toBe(seat.tableIndex + 1);
     }
   });
 
-  it('does not move an existing player when someone new joins', () => {
-    const before = assignSeats(['a', 'b']);
-    const after = assignSeats(['a', 'b', 'c']);
-    expect(after.get('a')?.id).toBe(before.get('a')?.id);
-    expect(after.get('b')?.id).toBe(before.get('b')?.id);
-  });
-
-  it('ignores duplicate ids instead of double booking a chair', () => {
-    const assignment = assignSeats(['a', 'a', 'b']);
-    expect(assignment.size).toBe(2);
-    expect(new Set([...assignment.values()].map((seat) => seat.id)).size).toBe(2);
+  it('numbers the tables left to right, stage row first', () => {
+    // The map is read the way the room is walked into, so the numbering has to
+    // run the same way or "table 26" sends someone to the wrong end of the hall.
+    const first = TABLES[0]!;
+    const second = TABLES[1]!;
+    expect(second.z).toBeCloseTo(first.z, 6);
+    expect(second.x).toBeGreaterThan(first.x);
+    const nextRow = TABLES[8]!;
+    expect(nextRow.z).toBeGreaterThan(first.z);
+    expect(nextRow.x).toBeCloseTo(first.x, 6);
   });
 });
 
