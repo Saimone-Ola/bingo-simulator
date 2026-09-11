@@ -72,6 +72,7 @@ import type { PlayerStance } from "../three/bingo/movement";
 import { SEATS, type SeatPlacement } from "../three/bingo/hallLayout";
 import { MARKER_PALETTE as MARKER_COLORS } from "../three/palette";
 import BingoFallback2D from "../components/BingoFallback2D";
+import { BINGO_CONNECTION_COPY, type BingoConnectionIssue } from '../net/bingoProtocol';
 
 const BingoRoomScene = lazy(() => import("../three/BingoRoomScene"));
 const AvatarCustomizer = lazy(() => import("../components/AvatarCustomizer"));
@@ -153,6 +154,8 @@ export default function BingoPage() {
   const settings = useHallSettings();
 
   const [status, setStatus] = useState<BingoConnectionStatus>("connecting");
+  const [connectionIssue, setConnectionIssue] = useState<BingoConnectionIssue | null>(null);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [snapshot, setSnapshot] = useState<BingoSnapshotPayload | null>(null);
   const [winner, setWinner] = useState<BingoWinnerPayload | null>(null);
   const [lastResults, setLastResults] = useState<BingoRoundResult[]>([]);
@@ -260,8 +263,15 @@ export default function BingoPage() {
     const accessToken = useAuthStore.getState().accessToken;
     if (!accessToken) return;
     let active = true;
+    setConnectionIssue(null);
+    setSnapshot(null);
 
     void connectToBingo(accessToken, roomCode, {
+      onConnectionIssue: (issue) => {
+        if (!active) return;
+        setConnectionIssue(issue);
+        setSnapshot(null);
+      },
       onStatus: (next) => active && setStatus(next),
       onSeating: (payload) => {
         if (!active) return;
@@ -372,7 +382,7 @@ export default function BingoPage() {
     };
     // Identity and room own the connection. Rotating a short-lived token must
     // preserve an in-flight purchase and its request ID; reconnect renews auth.
-  }, [userId, roomCode]);
+  }, [userId, roomCode, connectionAttempt]);
 
   const me = snapshot?.players.find(
     (player) => player.sessionId === snapshot.mySessionId,
@@ -674,14 +684,15 @@ export default function BingoPage() {
               />
             ) : (
               <div className="grid h-full place-items-center bg-surface-950">
-                <div className="text-center">
-                  <div className="mx-auto h-12 w-12 animate-pulse rounded-full bg-brand-400 shadow-hud" />
+                <div className="mx-4 max-w-md text-center" role="status">
+                  {status !== 'failed' && <div className="mx-auto h-12 w-12 animate-pulse rounded-full bg-brand-400 shadow-hud" />}
                   <p className="mt-4 text-sm text-content-primary/55">
-                    Ingresso in sala…
+                    {status === 'failed' ? 'Sala temporaneamente non disponibile' : 'Ingresso in sala…'}
                   </p>
-                  <p className="mt-1 text-xs text-content-primary/35">
-                    Sincronizzazione con la regia server
+                  <p className="mt-3 text-sm leading-relaxed text-content-secondary">
+                    {connectionIssue ? BINGO_CONNECTION_COPY[connectionIssue] : 'Sincronizzazione con il server di gioco…'}
                   </p>
+                  {status === 'failed' && <button type="button" className="mt-5 rounded-xl bg-brand-500 px-5 py-3 text-sm font-bold text-white" onClick={() => setConnectionAttempt((value) => value + 1)}>Riprova il collegamento</button>}
                 </div>
               </div>
             )}

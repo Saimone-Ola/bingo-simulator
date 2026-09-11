@@ -58,24 +58,32 @@ export const RENDER_PROFILES: Record<HallQuality, HallRenderProfile> = {
   HIGH: { dpr: [1, 2], shadowMapSize: 2048, accentLights: 9, antialias: true },
 };
 
+export function readSettings(value: unknown, mobile = false, reducedMotion = false): HallSettings {
+  const defaults: HallSettings = { ...DEFAULTS, ...(mobile ? { quality: 'LOW', ...QUALITY_PRESETS.LOW, headBob: false } : {}), reducedMotion };
+  if (!value || typeof value !== 'object') return defaults;
+  const parsed = value as Partial<HallSettings>;
+  const quality = parsed.quality && ['LOW', 'MEDIUM', 'HIGH'].includes(parsed.quality) ? parsed.quality : defaults.quality;
+  const boolean = (key: 'shadows' | 'reducedMotion' | 'headBob' | 'muted', fallback: boolean) =>
+    typeof parsed[key] === 'boolean' ? parsed[key] : fallback;
+  return {
+    quality,
+    shadows: boolean('shadows', QUALITY_PRESETS[quality].shadows),
+    ambientGuests: typeof parsed.ambientGuests === 'number' && Number.isFinite(parsed.ambientGuests) ? clampGuests(parsed.ambientGuests) : QUALITY_PRESETS[quality].ambientGuests,
+    reducedMotion: boolean('reducedMotion', defaults.reducedMotion),
+    headBob: boolean('headBob', defaults.headBob),
+    muted: boolean('muted', defaults.muted),
+    volume: typeof parsed.volume === 'number' && Number.isFinite(parsed.volume) ? clampVolume(parsed.volume) : defaults.volume,
+  };
+}
+
 function readStored(): HallSettings {
-  if (typeof window === 'undefined') return DEFAULTS;
+  if (typeof window === 'undefined') return readSettings(null);
+  const mobile = window.matchMedia?.('(pointer: coarse), (max-width: 767px)').matches ?? false;
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULTS;
-    const parsed = JSON.parse(raw) as Partial<HallSettings>;
-    return {
-      quality: parsed.quality ?? DEFAULTS.quality,
-      shadows: parsed.shadows ?? DEFAULTS.shadows,
-      ambientGuests: clampGuests(parsed.ambientGuests ?? DEFAULTS.ambientGuests),
-      reducedMotion: parsed.reducedMotion ?? DEFAULTS.reducedMotion,
-      headBob: parsed.headBob ?? DEFAULTS.headBob,
-      muted: parsed.muted ?? DEFAULTS.muted,
-      volume: clampVolume(parsed.volume ?? DEFAULTS.volume),
-    };
+    return readSettings(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? 'null'), mobile, reducedMotion);
   } catch {
-    // A corrupted or unavailable store must never keep a player out of the hall.
-    return DEFAULTS;
+    return readSettings(null, mobile, reducedMotion);
   }
 }
 

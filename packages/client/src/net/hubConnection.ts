@@ -10,6 +10,8 @@ import {
   type TeleportAppliedPayload,
   type WelcomePayload,
 } from '@bingo/shared';
+import { api } from '../lib/api';
+import { useAuthStore } from '../store/auth';
 import { wsOrigin } from '../lib/apiOrigin';
 
 /**
@@ -99,13 +101,15 @@ let room: HubRoom | null = null;
 let handlers: HubHandlers | null = null;
 let deliberateLeave = false;
 let reconnectAttempts = 0;
+let connectionVersion = 0;
 
 export function getRoom(): HubRoom | null {
   return room;
 }
 
-function attach(joined: HubRoom): void {
+function attach(joined: HubRoom, version: number): void {
   room = joined;
+  const active = () => version === connectionVersion && !deliberateLeave && room === joined;
 
   // `getStateCallbacks` is the supported way to observe a reflected schema.
   // Reading `room.state` directly at join time does not work: the first state
@@ -123,31 +127,32 @@ function attach(joined: HubRoom): void {
     };
   };
 
-  root.players.onAdd((player, key) => handlers?.onPlayerAdd(key, player));
-  root.players.onRemove((_player, key) => handlers?.onPlayerRemove(key));
+  root.players.onAdd((player, key) => active() && handlers?.onPlayerAdd(key, player));
+  root.players.onRemove((_player, key) => active() && handlers?.onPlayerRemove(key));
 
   joined.onMessage(SERVER_MESSAGES.welcome, (payload: WelcomePayload) => {
-    handlers?.onWelcome(payload);
+    if (active()) handlers?.onWelcome(payload);
   });
   joined.onMessage(SERVER_MESSAGES.chatMessage, (payload: ChatMessagePayload) => {
-    handlers?.onChat(payload);
+    if (active()) handlers?.onChat(payload);
   });
   joined.onMessage(SERVER_MESSAGES.chatHistory, (payload: ChatMessagePayload[]) => {
-    handlers?.onChatHistory(payload);
+    if (active()) handlers?.onChatHistory(payload);
   });
   joined.onMessage(SERVER_MESSAGES.emotePlayed, (payload: EmotePlayedPayload) => {
-    handlers?.onEmote(payload);
+    if (active()) handlers?.onEmote(payload);
   });
   joined.onMessage(SERVER_MESSAGES.teleportApplied, (payload: TeleportAppliedPayload) => {
-    handlers?.onTeleport(payload);
+    if (active()) handlers?.onTeleport(payload);
   });
   joined.onMessage(SERVER_MESSAGES.actionRejected, (payload: ActionRejectedPayload) => {
-    handlers?.onRejected(payload);
+    if (active()) handlers?.onRejected(payload);
   });
 
   sessionStorage.setItem(RECONNECT_KEY, joined.reconnectionToken);
 
   joined.onLeave((code) => {
+    if (!active()) return;
     room = null;
     if (deliberateLeave) {
       handlers?.onStatus('disconnected');
@@ -164,11 +169,12 @@ function attach(joined: HubRoom): void {
     }
 
     handlers?.onStatus('reconnecting');
-    void retryConnect();
+    void retryConnect(version);
   });
 }
 
-async function retryConnect(): Promise<void> {
+async function retryConnect(version: number): Promise<void> {
+  if (version !== connectionVersion || deliberateLeave) return;
   const token = sessionStorage.getItem(RECONNECT_KEY);
   if (!token) {
     handlers?.onStatus('failed');
@@ -180,20 +186,23 @@ async function retryConnect(): Promise<void> {
   // point hammering it faster than that window can absorb.
   const delay = Math.min(1000 * 2 ** (reconnectAttempts - 1), 8000);
   await new Promise((resolve) => setTimeout(resolve, delay));
+  if (version !== connectionVersion || deliberateLeave) return;
 
   try {
     const client = new Client(wsEndpoint());
     const rejoined = (await client.reconnect(token)) as unknown as HubRoom;
+    if (version !== connectionVersion || deliberateLeave) { await rejoined.leave(true); return; }
     reconnectAttempts = 0;
-    attach(rejoined);
+    attach(rejoined, version);
     handlers?.onStatus('connected');
   } catch {
+    if (version !== connectionVersion || deliberateLeave) return;
     if (reconnectAttempts >= 5) {
       handlers?.onStatus('failed');
       sessionStorage.removeItem(RECONNECT_KEY);
       return;
     }
-    void retryConnect();
+    void retryConnect(version);
   }
 }
 
@@ -201,26 +210,45 @@ export async function connectToHub(
   accessToken: string,
   next: HubHandlers,
 ): Promise<void> {
+  const version = ++connectionVersion;
+  const previous = room;
+  room = null;
+  if (previous) void previous.leave(true).catch(() => undefined);
   handlers = next;
   deliberateLeave = false;
   reconnectAttempts = 0;
-  handlers.onStatus('connecting');
-
+  next.onStatus('connecting');
   const client = new Client(wsEndpoint());
-  const joined = (await client.joinOrCreate(ROOM_NAMES.hub, {
-    accessToken,
-  })) as unknown as HubRoom;
-
-  attach(joined);
-  handlers.onStatus('connected');
+  let joined: HubRoom;
+  try {
+    joined = (await client.joinOrCreate(ROOM_NAMES.hub, { accessToken })) as unknown as HubRoom;
+  } catch (error) {
+    if (version !== connectionVersion || deliberateLeave) return;
+    const code = (error as { code?: number; status?: number } | null);
+    if (code?.code !== 401 && code?.status !== 401) throw error;
+    await api.me();
+    if (version !== connectionVersion || deliberateLeave) return;
+    const freshToken = useAuthStore.getState().accessToken;
+    if (!freshToken || freshToken === accessToken) throw error;
+    joined = (await client.joinOrCreate(ROOM_NAMES.hub, { accessToken: freshToken })) as unknown as HubRoom;
+  }
+  if (version !== connectionVersion || deliberateLeave) {
+    await joined.leave(true);
+    return;
+  }
+  attach(joined, version);
+  next.onStatus('connected');
 }
 
 export async function leaveHub(): Promise<void> {
   deliberateLeave = true;
+  connectionVersion += 1;
   sessionStorage.removeItem(RECONNECT_KEY);
-  await room?.leave(true);
+  const previous = room;
+  // Clear synchronously: completion of an old leave must not erase a new join.
   room = null;
   handlers = null;
+  await previous?.leave(true);
 }
 
 /* ---------------------------------------------------------------------------

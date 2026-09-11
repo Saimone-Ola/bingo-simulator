@@ -33,7 +33,7 @@ const LOOK_SENSITIVITY = 0.005;
 /** Closest the camera may be pulled towards the avatar when boxed in. */
 const CAMERA_MIN_CLEARANCE = 0.9;
 
-export default function PlayerController() {
+export default function PlayerController({ inputEnabled = true }: { inputEnabled?: boolean }) {
   const { camera, gl } = useThree();
   const mySessionId = useHubStore((state) => state.mySessionId);
 
@@ -50,6 +50,7 @@ export default function PlayerController() {
 
   /* --- Pointer look. Bound to the canvas so UI panels keep their clicks. --- */
   useEffect(() => {
+    if (!inputEnabled) return;
     const canvas = gl.domElement;
     let dragging = false;
     let lastX = 0;
@@ -107,7 +108,7 @@ export default function PlayerController() {
       canvas.removeEventListener('pointercancel', endDrag);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [gl]);
+  }, [gl, inputEnabled]);
 
   useFrame((_state, rawDelta) => {
     const dt = Math.min(rawDelta, 0.1);
@@ -120,7 +121,7 @@ export default function PlayerController() {
       yaw.current = authoritative.rotY + Math.PI;
     }
 
-    const axes = readMoveAxes();
+    const axes = inputEnabled ? readMoveAxes() : { right: 0, forward: 0, run: false };
 
     // Movement is relative to where the camera is looking, which is what every
     // third-person control scheme has taught players to expect.
