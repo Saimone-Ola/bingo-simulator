@@ -13,6 +13,8 @@ import {
   type SeatPlacement,
 } from './hallLayout';
 import { SEAT_INTERACT_RADIUS } from '@bingo/shared';
+import { layoutCards } from './cardLayout';
+import { CARD_VIEW_FOV, HALL_VIEW_FOV, cardViewForSeat, createViewReturnLatch } from './cameraView';
 import {
   createMovementState,
   createPoseLatch,
@@ -65,8 +67,10 @@ export interface PlayerMovementControllerProps {
   eyeHeightScale: number;
   reducedMotion: boolean;
   headBob: boolean;
-  /** Gently swings the view towards the stage, used during the countdown. */
-  focusStage: boolean;
+  /** An explicit player action; events never take control of the view. */
+  focusCard: boolean;
+  cardCount: number;
+  selectedCard: number;
   /** Blocks input while a modal panel owns the keyboard. */
   inputEnabled: boolean;
   onInteract: (focus: InteractionFocus) => void;
@@ -82,7 +86,9 @@ export function PlayerMovementController({
   eyeHeightScale,
   reducedMotion,
   headBob,
-  focusStage,
+  focusCard,
+  cardCount,
+  selectedCard,
   inputEnabled,
   onInteract,
   onTargetChange,
@@ -106,6 +112,10 @@ export function PlayerMovementController({
   const targetChangeRef = useRef(onTargetChange);
   const footstepRef = useRef(onFootstep);
   const exitLockRef = useRef(onRequestExitPointerLock);
+  const viewReturn = useMemo(() => createViewReturnLatch(), []);
+  const inspectingCard = focusCard && stance === 'SEATED' && cardCount > 0;
+  const inspectingRef = useRef(inspectingCard);
+  inspectingRef.current = inspectingCard;
 
   seatRef.current = seat;
   stanceRef.current = stance;
@@ -153,6 +163,24 @@ export function PlayerMovementController({
     movement.velocityZ = 0;
   }, [movement, poseLatch, seat, stance]);
 
+  const seatId = seat?.id ?? null;
+  useEffect(() => {
+    viewReturn.clear();
+  }, [seatId, stance, viewReturn]);
+
+  useEffect(() => {
+    if (inspectingCard && seatRef.current) {
+      viewReturn.enter(yawTarget.current, pitchTarget.current);
+      const view = cardViewForSeat(seatRef.current, SEATED_EYE_HEIGHT * eyeHeightScale, layoutCards(cardCount)[selectedCard]);
+      yawTarget.current = view.yaw;
+      pitchTarget.current = view.pitch;
+      if (document.pointerLockElement === gl.domElement) void document.exitPointerLock();
+    } else {
+      const view = viewReturn.leave();
+      if (view) { yawTarget.current = view.yaw; pitchTarget.current = view.pitch; }
+    }
+  }, [inspectingCard, seatId, selectedCard, cardCount, eyeHeightScale, viewReturn, gl]);
+
   useEffect(() => attachKeyboard(), []);
 
   useEffect(() => {
@@ -169,7 +197,7 @@ export function PlayerMovementController({
     let lastY = 0;
 
     const applyLook = (deltaX: number, deltaY: number) => {
-      if (!enabledRef.current) return;
+      if (!enabledRef.current || inspectingRef.current) return;
       yawTarget.current -= deltaX * LOOK_SENSITIVITY;
       pitchTarget.current = THREE.MathUtils.clamp(
         pitchTarget.current - deltaY * LOOK_SENSITIVITY,
@@ -238,7 +266,7 @@ export function PlayerMovementController({
     const pad = pads?.[0] ?? null;
     let padForward = 0;
     let padRight = 0;
-    if (pad && enabledRef.current) {
+    if (pad && enabledRef.current && !inspectingRef.current) {
       const deadzone = (value: number) => (Math.abs(value) > 0.16 ? value : 0);
       padRight = deadzone(pad.axes[0] ?? 0);
       padForward = -deadzone(pad.axes[1] ?? 0);
@@ -248,13 +276,6 @@ export function PlayerMovementController({
         PITCH_MIN,
         PITCH_MAX,
       );
-    }
-
-    if (focusStage) {
-      // The countdown turns everyone towards the stage without seizing control:
-      // any look input immediately wins over this nudge.
-      yawTarget.current = dampAngle(yawTarget.current, Math.PI, 1.4, delta);
-      pitchTarget.current = damp(pitchTarget.current, -0.02, 1.4, delta);
     }
 
     if (seated && currentSeat) {
@@ -303,6 +324,14 @@ export function PlayerMovementController({
     camera.position.z = movement.z;
     camera.position.y = damp(camera.position.y, eyeHeight + bob, reducedMotion ? 30 : 14, delta);
     camera.rotation.set(pitch.current, yaw.current, 0);
+    if (camera instanceof THREE.PerspectiveCamera) {
+      const targetFov = inspectingRef.current ? CARD_VIEW_FOV : HALL_VIEW_FOV;
+      const fov = damp(camera.fov, targetFov, reducedMotion ? 40 : 10, delta);
+      if (Math.abs(camera.fov - fov) > 0.001) {
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+      }
+    }
 
     // Interaction prompt, recomputed every frame but only published on change so
     // the HUD re-renders a handful of times per minute instead of per frame.

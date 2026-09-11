@@ -1,3 +1,4 @@
+import { HALL_PALETTE } from '../palette';
 import { useEffect, useMemo, useState } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import type { SeatPlacement } from './hallLayout';
@@ -14,8 +15,8 @@ import type { SeatPlacement } from './hallLayout';
  */
 export function BingoChair({
   seat,
-  fabric = '#4a3350',
-  frame = '#1d1820',
+  fabric = HALL_PALETTE.upholstery,
+  frame = HALL_PALETTE.metal,
   occupied = false,
   castShadow = true,
   selectable = false,
@@ -93,8 +94,8 @@ export function BingoChair({
         receiveShadow
       >
         <meshStandardMaterial
-          color={lit ? '#5f4268' : fabric}
-          emissive={lit ? '#8ee8de' : '#000000'}
+          color={lit ? HALL_PALETTE.interaction : fabric}
+          emissive={lit ? HALL_PALETTE.interactionLight : HALL_PALETTE.black}
           emissiveIntensity={lit ? 0.22 : 0}
           roughness={0.86}
         />
@@ -134,7 +135,7 @@ export function BingoChair({
       {interactive && (
         <mesh position={[0, lit ? 1.3 : 1.22, 0]} rotation={[Math.PI, Math.PI / 4, 0]}>
           <coneGeometry args={[lit ? 0.13 : 0.1, lit ? 0.2 : 0.16, 4]} />
-          <meshBasicMaterial color="#8ee8de" transparent opacity={lit ? 0.95 : 0.5} />
+          <meshBasicMaterial color={HALL_PALETTE.interactionLight} transparent opacity={lit ? 0.95 : 0.5} />
         </mesh>
       )}
     </group>

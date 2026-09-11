@@ -181,6 +181,15 @@ suite('ledger integrity', () => {
     expect((await getWalletState(db, userId)).balance).toBe(1000);
   });
 
+  it('rejects reuse of an idempotency key with a different economic operation', async () => {
+    const userId = await createPlayer(1000);
+    const idempotencyKey = `test-mismatch:${randomUUID()}`;
+    await postLedgerEntryAtomic({ userId, amount: -25, reason: 'bingo_card_purchase', idempotencyKey });
+    await expect(postLedgerEntryAtomic({ userId, amount: -50, reason: 'bingo_card_purchase', idempotencyKey })).rejects.toMatchObject({ code: 'validation_error' });
+    expect((await getWalletState(db, userId)).balance).toBe(975);
+    expect((await verifyLedgerIntegrity(db, userId))[0]?.consistent).toBe(true);
+  });
+
   it('rejects UPDATE and DELETE on ledger_entries at the database level', async () => {
     const userId = await createPlayer(100);
     const entry = await postLedgerEntryAtomic({

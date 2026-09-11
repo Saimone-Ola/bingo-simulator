@@ -6,6 +6,7 @@ import {
   SIMPLE_RADIUS,
   budgetFor,
   selectCrowdTiers,
+  selectHallCrowdTiers,
   type CrowdCandidate,
 } from '../crowdLod';
 
@@ -92,6 +93,27 @@ describe('tiering', () => {
 });
 
 describe('quality settings', () => {
+  it('limits medium decorative detail to four nearby guests without losing real players', () => {
+    const players = [
+      { id: 'player-near', x: 1, z: 1, isPlayer: true },
+      { id: 'player-far', x: 35, z: 35, isPlayer: true },
+    ];
+    const tiers = selectHallCrowdTiers([...everySeat, ...players], 0, 8, 'MEDIUM');
+    expect(tiers.full.filter((entry) => entry.isPlayer).map((entry) => entry.id)).toEqual(['player-near', 'player-far']);
+    const detailedDecorations = tiers.full.filter((entry) => !entry.isPlayer);
+    expect(detailedDecorations.length).toBeLessThanOrEqual(4);
+    expect(detailedDecorations.every((entry) => Math.hypot(entry.x, entry.z - 8) <= 6)).toBe(true);
+    const ids = [...tiers.full, ...tiers.simple, ...tiers.instanced].map((entry) => entry.id);
+    expect(new Set(ids).size).toBe(everySeat.length + 2);
+    expect(ids.length).toBe(everySeat.length + 2);
+  });
+
+  it('retains the fully instanced low-quality option even for real players', () => {
+    const tiers = selectHallCrowdTiers([{ id: 'player', x: 0, z: 0, isPlayer: true }], 0, 0, 'LOW');
+    expect(tiers.full).toEqual([]);
+    expect([...tiers.simple, ...tiers.instanced]).toHaveLength(1);
+  });
+
   it('draws nobody at full detail on the lowest setting', () => {
     // A machine that cannot hold the frame rate is better served by a room
     // visibly full of simple people than by eight good ones and a slideshow.

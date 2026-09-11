@@ -20,6 +20,8 @@ function player(overrides: Partial<BingoPlayerSummary> & { sessionId: string }):
     ready: false,
     cardCount: 0,
     markingMode: 'MANUAL',
+    participation: 'PARTICIPANT',
+    purchaseInProgress: false,
     appearance: DEFAULT_APPEARANCE,
     isHost: false,
     isNpc: false,

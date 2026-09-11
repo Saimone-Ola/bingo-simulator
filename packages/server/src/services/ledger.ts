@@ -120,6 +120,14 @@ export async function postLedgerEntry(
       .limit(1);
 
     if (existing) {
+      // A key identifies an operation, not permission to change its amount.
+      if (
+        existing.userId !== input.userId || existing.amount !== amount ||
+        existing.reason !== input.reason || existing.refType !== (input.refType ?? 'none') ||
+        existing.refId !== (input.refId ?? null)
+      ) {
+        throw AppError.conflict('validation_error', 'Idempotency key reused for a different ledger operation');
+      }
       return {
         id: existing.id,
         walletId: existing.walletId,
@@ -135,6 +143,7 @@ export async function postLedgerEntry(
   }
 
   const balanceAfter = wallet.balance + amount;
+  if (!Number.isSafeInteger(balanceAfter)) throw AppError.validation('Balance exceeds the safe credit range');
   if (balanceAfter < 0) {
     throw AppError.insufficientFunds(
       `Balance ${wallet.balance} cannot absorb ${amount}`,

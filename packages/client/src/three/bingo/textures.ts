@@ -1,3 +1,4 @@
+import { HALL_PALETTE } from '../palette';
 import * as THREE from 'three';
 import type { ItalianBingoCard } from '@bingo/shared';
 import { CARD_COLUMNS, CARD_ROWS } from './cardLayout';
@@ -68,7 +69,7 @@ export function labelTexture(text: string, options: LabelOptions = {}): THREE.Ca
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   const weight = options.bold === false ? '600' : '800';
-  context.font = `${weight} ${Math.round(height * (options.fontScale ?? 0.56))}px Inter, system-ui, sans-serif`;
+  context.font = `${weight} ${Math.round(height * (options.fontScale ?? 0.56))}px system-ui, sans-serif`;
   if (options.letterSpacing !== undefined && 'letterSpacing' in context) {
     (context as unknown as { letterSpacing: string }).letterSpacing = `${options.letterSpacing}px`;
   }
@@ -79,8 +80,8 @@ export function labelTexture(text: string, options: LabelOptions = {}): THREE.Ca
   return texture;
 }
 
-const CARD_TEXTURE_WIDTH = 576;
-const CARD_TEXTURE_HEIGHT = 216;
+const CARD_TEXTURE_WIDTH = 1152;
+const CARD_TEXTURE_HEIGHT = 432;
 
 export interface CardFaceState {
   readonly card: ItalianBingoCard;
@@ -107,8 +108,20 @@ export function createCardFaceTexture(): CardFaceTexture | null {
   const context = canvas?.getContext('2d');
   if (!canvas || !context) return null;
   const texture = finalise(canvas);
+  let previousPixels: string | null = null;
 
   const redraw = (state: CardFaceState): void => {
+    const marked = new Set(state.card.markedIndices);
+    // Snapshots replace card/Set objects even when their visible contents have
+    // not changed. Avoid repainting and uploading six large canvases per tick.
+    const pixels = JSON.stringify([
+      state.title, state.active, state.markerColor,
+      state.card.cells.map((value, index) => [
+        value,
+        value !== null && marked.has(index) ? (state.drawn.has(value) ? 2 : 1) : 0,
+      ]),
+    ]);
+    if (pixels === previousPixels) return;
     const { width, height } = canvas;
     const marginX = width * 0.028;
     const marginTop = height * 0.15;
@@ -117,23 +130,22 @@ export function createCardFaceTexture(): CardFaceTexture | null {
     const gridHeight = height - marginTop - marginBottom;
     const cellWidth = gridWidth / CARD_COLUMNS;
     const cellHeight = gridHeight / CARD_ROWS;
-    const marked = new Set(state.card.markedIndices);
 
     context.clearRect(0, 0, width, height);
-    context.fillStyle = state.active ? '#fdf3d9' : '#f4ead0';
+    context.fillStyle = state.active ? HALL_PALETTE.paper : HALL_PALETTE.paperMuted;
     context.fillRect(0, 0, width, height);
 
     // Header strip with the card name, the way printed Italian cards carry the
     // series and the number of the card.
-    context.fillStyle = state.active ? '#a8721b' : '#7d6742';
+    context.fillStyle = state.active ? HALL_PALETTE.interaction : HALL_PALETTE.upholstery;
     context.fillRect(0, 0, width, marginTop * 0.78);
-    context.fillStyle = '#fff8e6';
+    context.fillStyle = HALL_PALETTE.paper;
     context.textAlign = 'left';
     context.textBaseline = 'middle';
-    context.font = `800 ${Math.round(marginTop * 0.46)}px Inter, system-ui, sans-serif`;
+    context.font = `800 ${Math.round(marginTop * 0.46)}px system-ui, sans-serif`;
     context.fillText(state.title, marginX, marginTop * 0.39);
     context.textAlign = 'right';
-    context.font = `700 ${Math.round(marginTop * 0.36)}px Inter, system-ui, sans-serif`;
+    context.font = `700 ${Math.round(marginTop * 0.36)}px system-ui, sans-serif`;
     context.fillText('BINGO 90', width - marginX, marginTop * 0.39);
 
     for (let index = 0; index < state.card.cells.length; index += 1) {
@@ -146,18 +158,18 @@ export function createCardFaceTexture(): CardFaceTexture | null {
       const isMarked = marked.has(index);
       const isMistake = isMarked && !isDrawn;
 
-      context.fillStyle = value === null ? '#ddd0b0' : isDrawn ? '#fff0bd' : '#fffbf1';
+      context.fillStyle = value === null ? HALL_PALETTE.paperBlank : HALL_PALETTE.paper;
       context.fillRect(x + 1, y + 1, cellWidth - 2, cellHeight - 2);
-      context.strokeStyle = '#b7a582';
+      context.strokeStyle = HALL_PALETTE.paperGrid;
       context.lineWidth = 1.4;
       context.strokeRect(x + 1, y + 1, cellWidth - 2, cellHeight - 2);
 
       if (value === null) continue;
 
-      context.fillStyle = '#2c2216';
+      context.fillStyle = HALL_PALETTE.ink;
       context.textAlign = 'center';
       context.textBaseline = 'middle';
-      context.font = `800 ${Math.round(cellHeight * 0.6)}px Inter, system-ui, sans-serif`;
+      context.font = `800 ${Math.round(cellHeight * 0.6)}px system-ui, sans-serif`;
       context.fillText(String(value), x + cellWidth / 2, y + cellHeight / 2 + 1);
 
       if (!isMarked) continue;
@@ -183,6 +195,7 @@ export function createCardFaceTexture(): CardFaceTexture | null {
     }
 
     texture.needsUpdate = true;
+    previousPixels = pixels;
   };
 
   return {
@@ -229,11 +242,11 @@ export function createNumberBoardTexture(): NumberBoardTexture | null {
     context.fillStyle = '#e9d8ff';
     context.textAlign = 'left';
     context.textBaseline = 'middle';
-    context.font = '800 44px Inter, system-ui, sans-serif';
+    context.font = '800 44px system-ui, sans-serif';
     context.fillText('TABELLONE 1 – 90', padX, padTop / 2);
     context.textAlign = 'right';
     context.fillStyle = '#8ee8de';
-    context.font = '800 40px Inter, system-ui, sans-serif';
+    context.font = '800 40px system-ui, sans-serif';
     context.fillText(`${called.size} / 90`, BOARD_WIDTH - padX, padTop / 2);
 
     for (let number = 1; number <= 90; number += 1) {
@@ -259,7 +272,7 @@ export function createNumberBoardTexture(): NumberBoardTexture | null {
       context.fillStyle = isCurrent ? '#2a1602' : isCalled ? '#ffffff' : '#5e5280';
       context.textAlign = 'center';
       context.textBaseline = 'middle';
-      context.font = `800 ${Math.round(cellHeight * 0.5)}px Inter, system-ui, sans-serif`;
+      context.font = `800 ${Math.round(cellHeight * 0.5)}px system-ui, sans-serif`;
       context.fillText(String(number), x + cellWidth / 2, y + cellHeight / 2 + 2);
     }
 
@@ -299,7 +312,7 @@ export function createStageScreenTexture(): StageScreenTexture | null {
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillStyle = state.accent;
-    context.font = '800 46px Inter, system-ui, sans-serif';
+    context.font = '800 46px system-ui, sans-serif';
     context.fillText(state.headline, width / 2, 62);
 
     if (state.current === null) {
@@ -307,7 +320,7 @@ export function createStageScreenTexture(): StageScreenTexture | null {
       // rendering as a bare yellow bar across the middle of the screen, which
       // reads as a broken display rather than as "not started yet".
       context.fillStyle = '#4c4270';
-      context.font = '800 44px Inter, system-ui, sans-serif';
+      context.font = '800 44px system-ui, sans-serif';
       context.fillText('in attesa del primo numero', width / 2, height / 2 - 18);
       context.fillStyle = '#2b2448';
       for (let dot = 0; dot < 3; dot += 1) {
@@ -317,7 +330,7 @@ export function createStageScreenTexture(): StageScreenTexture | null {
       }
     } else {
       context.fillStyle = '#ffd166';
-      context.font = '900 250px Inter, system-ui, sans-serif';
+      context.font = '900 250px system-ui, sans-serif';
       context.fillText(String(state.current), width / 2, height / 2 + 12);
     }
 
@@ -334,14 +347,14 @@ export function createStageScreenTexture(): StageScreenTexture | null {
       context.arc(x, height - 96, ballRadius, 0, Math.PI * 2);
       context.fill();
       context.fillStyle = '#361c02';
-      context.font = '800 32px Inter, system-ui, sans-serif';
+      context.font = '800 32px system-ui, sans-serif';
       context.fillText(String(value), x, height - 94);
     }
 
     // Clear of the bottom edge: at height - 30 the descenders were being cut
     // off by the screen bezel.
     context.fillStyle = '#9d8fd6';
-    context.font = '700 30px Inter, system-ui, sans-serif';
+    context.font = '700 30px system-ui, sans-serif';
     context.fillText(state.footer, width / 2, height - 42);
     texture.needsUpdate = true;
   };

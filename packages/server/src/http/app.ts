@@ -1,6 +1,6 @@
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { sql as raw } from 'drizzle-orm';
 import type { ApiErrorBody } from '@bingo/shared';
 import { env } from '../env';
@@ -54,7 +54,7 @@ export function mountApi(app: Application): Application {
       limit: 120,
       standardHeaders: 'draft-7',
       legacyHeaders: false,
-      keyGenerator: (request: Request) => request.auth?.userId ?? request.ip ?? 'unknown',
+      keyGenerator: (request: Request) => request.auth?.userId ?? ipKeyGenerator(request.ip ?? 'unknown'),
       handler: (_request, response) => {
         const body: ApiErrorBody = {
           error: { code: 'rate_limited', message: 'Too many requests' },

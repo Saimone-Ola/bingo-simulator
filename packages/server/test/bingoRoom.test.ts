@@ -7,11 +7,12 @@ import {
   BINGO_SERVER_MESSAGES,
   ROOM_NAMES,
   type BingoSnapshotPayload,
+  type BingoWinnerPayload,
 } from '@bingo/shared';
 import { hasTestDatabase } from './setup';
 import { closeDatabase, db } from '../src/db/client';
 import { avatars, users } from '../src/db/schema';
-import { ensureWallet } from '../src/services/ledger';
+import { ensureWallet, getWalletState, postLedgerEntry } from '../src/services/ledger';
 import { signAccessToken } from '../src/auth/tokens';
 import { BingoRoom } from '../src/realtime/bingoRoom';
 
@@ -39,6 +40,7 @@ async function createPlayer(label: string): Promise<{ userId: string; token: str
       passwordHash: 'not-a-real-hash',
     });
     await ensureWallet(tx, userId);
+    await postLedgerEntry(tx, { userId, amount: 100, reason: 'welcome_bonus' });
     await tx.insert(avatars).values({ userId });
   });
   const token = await signAccessToken({ sub: userId, role: 'player', sid: randomUUID() });
@@ -89,19 +91,82 @@ suite('bingo room seating', () => {
     await room.disconnect();
   });
 
-  it('lets a lone host reach the minimum player count', async () => {
-    // Once "enough players" started counting seated guests rather than a
-    // configured number, an unpopulated hall meant a solo host could never
-    // start a round at all.
+  it('shows decorative guests without counting them as round competitors', async () => {
     const { room, client, snapshots } = await connect('Solo');
     const latest = snapshots.at(-1)!;
-    const present =
-      latest.players.length + latest.seating.filter((row) => row.kind === 'NPC').length;
-
-    expect(present).toBeGreaterThanOrEqual(latest.config.minPlayers);
+    expect(latest.seating.filter((row) => row.kind === 'NPC').length).toBeGreaterThan(0);
+    expect(latest.players.filter((player) => player.participation === 'PARTICIPANT')).toHaveLength(0);
+    expect(latest.startBlockedReason).toBe('minimum_players');
+    expect(latest.config.training).toBe(false);
 
     await client.leave();
     await room.disconnect();
+  });
+
+  it('plays a shared round over two real connections with one debit, matching draws and tied paid results', async () => {
+    const room = await colyseus.createRoom(ROOM_NAMES.bingo);
+    const [alice, bruno] = await Promise.all([createPlayer('RoundAlice'), createPlayer('RoundBruno')]);
+    const first = await colyseus.connectTo(room, { accessToken: alice.token });
+    const second = await colyseus.connectTo(room, { accessToken: bruno.token });
+    const snapshots: BingoSnapshotPayload[][] = [[], []];
+    const winners: BingoWinnerPayload[][] = [[], []];
+    for (const [index, client] of [first, second].entries()) {
+      client.onMessage(BINGO_SERVER_MESSAGES.snapshot, (message: BingoSnapshotPayload) => snapshots[index]!.push(message));
+      client.onMessage(BINGO_SERVER_MESSAGES.winner, (message: BingoWinnerPayload) => winners[index]!.push(message));
+      client.onMessage(BINGO_SERVER_MESSAGES.purchaseConfirmed, () => undefined);
+      client.onMessage(BINGO_SERVER_MESSAGES.ballCalled, () => undefined);
+      client.onMessage(BINGO_SERVER_MESSAGES.actionRejected, () => undefined);
+      client.onMessage(BINGO_SERVER_MESSAGES.seating, () => undefined);
+    }
+    const until = async (predicate: () => boolean) => {
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        if (predicate()) return;
+        await wait(50);
+      }
+      throw new Error('Timed out waiting for Bingo round condition');
+    };
+    const roundId = (room as unknown as { roundId: string }).roundId;
+    first.send(BINGO_CLIENT_MESSAGES.purchaseCards, { roundId, quantity: 1, markingMode: 'MANUAL', requestId: 'alice-purchase' });
+    second.send(BINGO_CLIENT_MESSAGES.purchaseCards, { roundId, quantity: 6, markingMode: 'AUTOMATIC', requestId: 'bruno-purchase' });
+    await until(() => snapshots[0]!.at(-1)?.myCards.length === 1 && snapshots[1]!.at(-1)?.myCards.length === 6);
+    const initial = snapshots[0]!.at(-1)!;
+    console.info('Bingo integration snapshot measurement', JSON.stringify({
+      scenario: 'two real Colyseus connections, 1 manual card and 6 automatic cards, decorative crowd',
+      runtime: process.version, platform: process.platform,
+      peers: initial.players.filter((player) => !player.isNpc && player.connected).length,
+      decorativeNpcs: initial.seating.filter((seat) => seat.kind === 'NPC').length,
+      manualSnapshotBytes: Buffer.byteLength(JSON.stringify(initial), 'utf8'),
+      automaticSnapshotBytes: Buffer.byteLength(JSON.stringify(snapshots[1]!.at(-1)), 'utf8'),
+    }));
+    first.send(BINGO_CLIENT_MESSAGES.purchaseCards, { roundId: initial.roundId, quantity: 1, markingMode: 'MANUAL', requestId: 'alice-purchase' });
+    await wait(200);
+    expect((await getWalletState(db, alice.userId)).balance).toBe(90);
+    expect(new Set(snapshots[1]!.at(-1)!.myCards.flatMap((card) => card.cells.filter((n) => n !== null))).size).toBe(90);
+    first.send(BINGO_CLIENT_MESSAGES.setReady, { ready: true }); second.send(BINGO_CLIENT_MESSAGES.setReady, { ready: true });
+    await until(() => snapshots[0]!.at(-1)?.phase === 'COUNTDOWN');
+    // Advance the authoritative scheduler, never inject state from either client.
+    const control = room as unknown as { countdownEndsAt: number; tick(): void; drawNumber(): void; claimWindow: { closesAt: number }; settleClaimWindow(): Promise<void> };
+    control.countdownEndsAt = Date.now() - 1; control.tick();
+    await until(() => snapshots[0]!.at(-1)?.phase === 'PLAYING');
+    for (let draw = 0; draw < 90; draw += 1) control.drawNumber();
+    await until(() => snapshots[0]!.at(-1)?.drawnNumbers.length === 90 && snapshots[1]!.at(-1)?.drawnNumbers.length === 90);
+    expect(snapshots[0]!.at(-1)!.drawnNumbers).toEqual(snapshots[1]!.at(-1)!.drawnNumbers);
+    expect(snapshots[0]!.at(-1)!.myCards[0]!.markedIndices).toEqual([]);
+    expect(snapshots[1]!.at(-1)!.myCards.every((card) => card.markedIndices.length === 15)).toBe(true);
+    for (const client of [first, second]) client.send(BINGO_CLIENT_MESSAGES.claim, { round: initial.round, roundId: initial.roundId, tier: 'BINGO', cardIndex: 0, requestId: 'bingo-tied-claim' });
+    await until(() => snapshots[0]!.at(-1)?.claimWindow !== null && snapshots[0]!.at(-1)?.claimWindow !== undefined);
+    await wait(150); control.claimWindow.closesAt = Date.now() - 1; await control.settleClaimWindow();
+    await until(() => winners.every((list) => list.length === 2));
+    // Winner messages precede the final snapshot; wait for both wire deliveries.
+    await until(() => snapshots.every((list) => {
+      const snapshot = list.at(-1);
+      return snapshot?.phase === 'RESULTS' && snapshot.results.length === 2 && snapshot.results.every((result) => result.status === 'PAID');
+    }));
+    expect(winners[0]).toEqual(winners[1]);
+    expect(winners[0]!.reduce((sum, winner) => sum + winner.prizeCredits, 0)).toBe(initial.prizePool.perTier.BINGO);
+    expect(snapshots[0]!.at(-1)?.phase).toBe('RESULTS');
+    expect(snapshots[0]!.at(-1)?.results.every((result) => result.status === 'PAID')).toBe(true);
+    await first.leave(); await second.leave(); await room.disconnect();
   });
 
   it('tells the player who sat down that they are sitting', async () => {

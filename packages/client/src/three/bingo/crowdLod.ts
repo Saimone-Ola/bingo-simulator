@@ -22,6 +22,8 @@ export interface CrowdCandidate {
   id: string;
   x: number;
   z: number;
+  /** Connected human actors retain their face and gestures above LOW quality. */
+  isPlayer?: boolean;
 }
 
 export const CROWD_TIERS = ['FULL', 'SIMPLE', 'INSTANCED'] as const;
@@ -48,6 +50,7 @@ export interface CrowdBudget {
   fullBudget?: number;
   /** Hard cap on simple ones. */
   simpleBudget?: number;
+  fullRadius?: number;
 }
 
 function distanceSq(candidate: CrowdCandidate, x: number, z: number): number {
@@ -80,7 +83,8 @@ export function selectCrowdTiers(
   const simple: CrowdCandidate[] = [];
   const instanced: CrowdCandidate[] = [];
 
-  const fullSq = FULL_RADIUS * FULL_RADIUS;
+  const fullRadius = Math.max(0, budget.fullRadius ?? FULL_RADIUS);
+  const fullSq = fullRadius * fullRadius;
   const simpleSq = SIMPLE_RADIUS * SIMPLE_RADIUS;
 
   for (const candidate of sorted) {
@@ -102,11 +106,25 @@ export function selectCrowdTiers(
  */
 export const CROWD_BUDGETS: Record<string, CrowdBudget> = {
   LOW: { fullBudget: 0, simpleBudget: 24 },
-  MEDIUM: { fullBudget: 10, simpleBudget: 60 },
+  MEDIUM: { fullBudget: 4, simpleBudget: 60, fullRadius: 6 },
   HIGH: { fullBudget: DETAILED_GUEST_BUDGET, simpleBudget: 120 },
   ULTRA: { fullBudget: 44, simpleBudget: 200 },
 };
 
 export function budgetFor(quality: string): CrowdBudget {
   return CROWD_BUDGETS[quality] ?? CROWD_BUDGETS.MEDIUM!;
+}
+
+/** Decorative crowds cannot displace the real people a player came to meet. */
+export function selectHallCrowdTiers(
+  candidates: readonly CrowdCandidate[],
+  viewerX: number,
+  viewerZ: number,
+  quality: string,
+): CrowdSelection {
+  const preservePlayers = quality !== 'LOW';
+  const players = preservePlayers ? candidates.filter((candidate) => candidate.isPlayer) : [];
+  const decorations = preservePlayers ? candidates.filter((candidate) => !candidate.isPlayer) : candidates;
+  const tiers = selectCrowdTiers(decorations, viewerX, viewerZ, budgetFor(quality));
+  return { ...tiers, full: [...players, ...tiers.full] };
 }

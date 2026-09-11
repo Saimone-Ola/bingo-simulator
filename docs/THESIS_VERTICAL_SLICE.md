@@ -35,18 +35,68 @@ contratti perché non esiste un secondo file da aggiornare.
 
 ### Bingo italiano a 90 numeri
 
-1. Ingresso in sala tramite codice.
-2. Lobby con host, partecipanti, NPC, stato Pronto.
-3. Avvio configurabile: HOST, ALL_READY o TIMER.
-4. Acquisto idempotente di 1, 3, 6 o N cartelle, in soli crediti virtuali.
-5. Cartelle italiane 3×9: 15 numeri, 5 per riga, fasce 1–90 corrette.
-6. Countdown sincronizzato e annullabile dall'host.
-7. Estrazione deterministica a seed, autoritativa sul server, senza duplicati.
-8. Segnatura manuale con errori correggibili, oppure automatica sui soli estratti.
-9. Cinquina e Bingo verificati esclusivamente dal server.
-10. Pagamento tramite ledger append-only con chiavi di idempotenza.
-11. Riconnessione entro 60 secondi e riassegnazione dell'host.
-12. Chiamata vocale italiana e storico degli ultimi cinque numeri.
+1. Ingresso in una sala temporanea tramite codice, senza acquisto o posto
+   automatici; spostamento, avatar, banco acquisti e scelta libera della sedia.
+2. Distinzione tra visitatori, acquirenti del round e spettatori entrati tardi.
+   Gli NPC sono pubblico decorativo: nessuna cartella, puntata, vincita o
+   contributo al minimo. Servono due persone reali, oppure **Allenamento**
+   esplicitamente scelto prima di comprare per una prova individuale.
+3. Regia con HOST, ALL_READY o TIMER. Gli acquisti in elaborazione e gli
+   acquirenti scollegati o in preparazione impediscono l'avvio. L'host rispetta
+   tutti-pronti e la scadenza del timer; il countdown ricontrolla i prerequisiti.
+4. Acquisto idempotente in crediti virtuali: fino a tre cartelle manuali o sei
+   automatiche. Cartelle, addebito e montepremi sono atomici; un retry conferma
+   l'acquisto originale. Gli esiti DB incerti restano bloccanti e ritentabili.
+5. Cartelle italiane 3×9: 15 numeri, cinque per riga, colonne per decina ordinate.
+   Sei cartelle acquistate insieme formano una sestina che copre 1–90 una volta.
+6. Configurazione del round congelata dal primo acquisto in elaborazione.
+   Modifiche successive accodate e visibili per il prossimo round.
+7. Countdown sincronizzato e annullabile; un nuovo spettatore non lo annulla.
+   In preparazione l'host può annullare il round e rimborsare gli acquisti.
+8. Estrazione deterministica a seed, autorevole sul server, senza duplicati.
+   L'hash è pubblicato; la rivelazione finale del seed Bingo non è implementata.
+9. Segnatura manuale come ausilio visivo con errori correggibili, oppure
+   automatica sui soli estratti, su tutte le proprie cartelle. La dichiarazione
+   resta un'azione del giocatore in entrambe le modalità.
+10. Cinquina e Bingo verificati sulle cartelle possedute e gli estratti. La
+    prima dichiarazione valida ferma l'estrazione per una finestra server di
+    cinque secondi; altre cartelle valide per lo stesso premio condividono
+    l'importo. I resti interi seguono un ordinamento stabile degli ID.
+11. Gruppo vincitori persistito prima degli accrediti, ledger append-only e
+    retry idempotenti. Il riepilogo distingue premi pendenti e pagati; il round
+    successivo aspetta i pagamenti.
+12. Rientro dello stesso account con cartelle, segni e modalità conservati
+    mentre il processo è attivo; posto tenuto per una finestra di 60 secondi e
+    host trasferito a una persona connessa. Il nuovo round non riacquista e
+    conserva la preferenza di segnatura.
+13. Eventi decorativi compatibili con estrazioni e dichiarazioni; eventi che
+    sospendono il gioco con ripresa e durata governate dal server. Audio
+    italiano, tabellone e storico restano complementari.
+14. Vista 2D dello stesso Bingo per il ripiego senza WebGL, accessibile con
+    `?view=2d` e compatibile con il parametro `room`.
+
+Finestra di cinque secondi, allenamento, gestione dei resti e segnatura assistita
+sono scelte del simulatore. Le regole italiane di riferimento e i collegamenti
+ufficiali sono distinti in [ROUND_CORRECTNESS](ROUND_CORRECTNESS.md).
+
+### Recupero del Bingo e limiti
+
+L'identità contabile è una UUID per round, distinta da codice sala e contatore
+visibile. Payload di acquisto, segnatura e dichiarazione devono riportarla:
+un vecchio messaggio non può diventare un acquisto della partita seguente.
+
+Il processo non salva una ricostruzione completa di estrazioni, timer ed eventi.
+Al riavvio onora i premi già persistiti e rimborsa i round interrotti. Se è già
+persistito il gruppo vincitore del Bingo, completa i pagamenti e chiude la
+partita senza rimborso. L'uscita volontaria da una partita iniziata non la
+annulla: la stanza continua l'estrazione anche senza client connessi.
+
+Un lock PostgreSQL permette un solo server autorevole per database, così un
+secondo processo non può recuperare round ancora gestiti dal primo. Database
+demo e test devono essere separati. Non sono implementati ripresa della stessa
+estrazione dopo un crash o distribuzione della stessa partita fra più processi.
+La procedura è descritta in [BINGO_RECOVERY](BINGO_RECOVERY.md); la prova con due
+account, anche in LAN, è in [DEMO](DEMO.md#prova-con-due-amici-in-lan).
 
 ### Sala da 512 posti
 
@@ -68,6 +118,12 @@ contratti perché non esiste un secondo file da aggiornare.
 - I test asseriscono le proprietà che contano: ogni posto vede un tabellone
   entro la distanza di lettura, nessuna unità appesa si frappone fra un posto e
   lo schermo del palco, e nessuna interseca i corpi illuminanti del soffitto.
+
+Gli interventi su leggibilità delle cartelle, materiali, luce, personaggi e
+limiti delle prove visive sono documentati in
+[VISUAL_IMPROVEMENTS](VISUAL_IMPROVEMENTS.md). La quantità di pubblico
+decorativo e il numero di connessioni umane sono metriche distinte; uno
+snapshot leggero della folla non equivale a una prova con altrettanti giocatori.
 
 ### Hub navigabile
 
@@ -131,32 +187,39 @@ pnpm build
 Il workflow `.github/workflows/quality.yml` esegue gli stessi controlli a ogni
 push e pull request.
 
-I test che toccano il database si saltano da soli quando manca
-`TEST_DATABASE_URL`, così `pnpm test` gira su un checkout pulito:
+Le suite database usano `TEST_DATABASE_URL`, con fallback a `DATABASE_URL`
+quando esportata. Si saltano quando entrambe mancano. Per le integrazioni
+impostare esplicitamente un database di test sacrificabile:
 
 ```bash
-TEST_DATABASE_URL=postgresql://… pnpm test    # 214 test, nessuno saltato
+TEST_DATABASE_URL=postgresql://…/bingo_test pnpm test
 ```
 
+Il comando sopra è per Bash. In PowerShell impostare
+`$env:TEST_DATABASE_URL = "postgresql://…/bingo_test"`, poi eseguire `pnpm test`.
 Il workflow avvia un PostgreSQL 16 come service e applica le migrazioni prima
-dei test, quindi **tutti e 214 girano contro un database vero** a ogni push.
-Prima non era così: `DATABASE_URL` era impostata ma nessuno era in ascolto sulla
-5432, quindi le suite del ledger e della hub room partivano e fallivano — la
-build era rossa a ogni run e i quindici test che quella variabile doveva
-abilitare non erano mai stati eseguiti.
+delle suite d'integrazione.
 
-Verificato a mano sullo stesso database: migrazioni idempotenti (una seconda
-esecuzione non riapplica nulla), seed di 8 slot con RTP misurato su 100 000 giri
-ciascuna, `check-ledger-integrity` che ri-deriva 101 portafogli dalla somma
-delle scritture, e l'`UPDATE` su `ledger_entries` respinto dal trigger.
+Per il Bingo le verifiche coprono generazione, avvio e riconnessione con servizi
+controllati, transazioni contro PostgreSQL e un round con due connessioni
+Colyseus reali. Quest'ultimo confronta estratti e risultati e misura i byte
+degli snapshot, indicando separatamente persone e NPC. I test del trasporto
+client verificano retry, conferme esplicite e messaggi tardivi dopo il rientro.
+Le prove browser completano questi controlli per leggibilità e interazione.
+
+Migrazioni, seed, integrità del ledger e build hanno comandi separati: riportare
+nel verbale della dimostrazione gli esiti effettivi, gli eventuali test saltati
+e il dispositivo usato. La presenza di una suite non costituisce prova della
+sua esecuzione, e una misura su due connessioni non dimostra il carico massimo
+di 512 giocatori.
 
 ## Non implementato
 
 Elencato perché la domanda arriverà, e una risposta preparata vale più di una
 improvvisata.
 
-- Creazione di sale da parte degli utenti (l'ingresso per codice c'è, la
-  creazione no).
+- Editor e pubblicazione persistente di sale di proprietà degli utenti. Le
+  sale temporanee per codice e la configurazione della Regia sono disponibili.
 - Editor visivo della sala e pattern di vittoria personalizzati.
 - Price game, eventi a orario, jackpot progressivo.
 - Negozio, inventario, guardaroba, progressione.

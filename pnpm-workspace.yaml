@@ -1,2 +1,6 @@
 packages:
   - 'packages/*'
+
+# The exact upstream commit, over HTTPS without an SSH-capable git process.
+overrides:
+  uWebSockets.js: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/fcfc622a4286909593b7f390056d89e0ca3b56b9

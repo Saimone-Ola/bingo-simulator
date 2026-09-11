@@ -5,6 +5,7 @@ import {
   ITALIAN_CARD_NUMBER_COUNT,
   ITALIAN_CARD_ROWS,
   italianColumnRange,
+  createSestina,
   type ItalianBingoCard,
 } from '@bingo/shared';
 
@@ -129,6 +130,14 @@ export function createUniqueItalianCards(
     cards.push(card);
   }
   return cards;
+}
+
+/** Six-card purchases are a real strip: each number 1–90 occurs exactly once. */
+export function createPurchaseCards(quantity: number, seed: string, idPrefix: string): ItalianBingoCard[] {
+  if (quantity !== 6) return createUniqueItalianCards(quantity, seed, idPrefix);
+  const sestina = createSestina(createSeededRandom(`${seed}:sestina`));
+  if (!sestina) throw new Error('Unable to generate a valid Bingo sestina');
+  return sestina.cards.map((card, index) => ({ ...card, id: `${idPrefix}-${index + 1}`, index, markedIndices: [] }));
 }
 
 export function cardNumbers(card: Pick<ItalianBingoCard, 'cells'>): number[] {

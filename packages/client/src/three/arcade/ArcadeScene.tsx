@@ -403,7 +403,7 @@ export default function ArcadeScene(props: ArcadeSceneProps) {
   return (
     <SceneBoundary {...(props.onSceneError ? { onError: props.onSceneError } : {})}>
       <Canvas
-        shadows={props.shadows}
+        shadows={props.shadows ? 'percentage' : false}
         dpr={[profile.dpr[0], profile.dpr[1]]}
         camera={{ position: [0, EYE_HEIGHT, 7], fov: 62, near: 0.06, far: 45 }}
         gl={{ antialias: profile.antialias, powerPreference: 'high-performance' }}

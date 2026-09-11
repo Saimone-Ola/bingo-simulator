@@ -27,7 +27,7 @@ import { buildOccupancy } from './bingo/occupants';
 import CrowdInstances from './bingo/CrowdInstances';
 import HallNumberBoards from './bingo/HallNumberBoards';
 import InstancedFurniture from './bingo/InstancedFurniture';
-import { budgetFor, selectCrowdTiers } from './bingo/crowdLod';
+import { selectHallCrowdTiers } from './bingo/crowdLod';
 import {
   SEATS,
   SPAWN,
@@ -39,6 +39,8 @@ import {
 import { DECK_RADIUS } from './bingo/cardLayout';
 import type { PlayerStance } from './bingo/movement';
 import { RENDER_PROFILES, type HallQuality } from '../store/hallSettings';
+import { HALL_PALETTE, MARKER_PALETTE } from './palette';
+import DevRenderProbe from './bingo/DevRenderProbe';
 
 /**
  * The virtual Bingo hall.
@@ -97,6 +99,7 @@ export interface BingoRoomSceneProps {
   onFootstep: () => void;
   onRequestExitPointerLock: () => void;
   onSceneError?: (error: Error) => void;
+  onSceneReady?: () => void;
 }
 
 const PHASE_HEADLINE: Record<BingoPhase, string> = {
@@ -145,36 +148,36 @@ function HallLighting({
     const lambda = reducedMotion ? 20 : 3.5;
     const blend = 1 - Math.exp(-lambda * delta);
     if (ambient.current) {
-      ambient.current.intensity += (0.84 * lightScale - ambient.current.intensity) * blend;
+      ambient.current.intensity += (0.6 * lightScale - ambient.current.intensity) * blend;
       ambient.current.color.lerp(tintColour, blend);
     }
     if (hemisphere.current) {
-      hemisphere.current.intensity += (1.5 * lightScale - hemisphere.current.intensity) * blend;
+      hemisphere.current.intensity += (1.15 * lightScale - hemisphere.current.intensity) * blend;
     }
     if (key.current) {
-      key.current.intensity += (2.1 * lightScale - key.current.intensity) * blend;
+      key.current.intensity += (1.75 * lightScale - key.current.intensity) * blend;
     }
     if (fog.current) {
       // The hall is fifty-eight metres from the doors to the stage. Fog that
       // ended at forty-one was atmosphere in the old room and a grey wall across
       // the middle of this one — you walked in and the stage was not there.
-      const target = 22 - fogBoost * 10;
+      const target = 30 - fogBoost * 10;
       fog.current.near += (target - fog.current.near) * blend;
-      fog.current.far += (target + 52 - fog.current.far) * blend;
+      fog.current.far += (target + 70 - fog.current.far) * blend;
     }
   });
 
   return (
     <>
-      <color attach="background" args={['#100a1b']} />
-      <fog ref={fog} attach="fog" args={['#1a1226', 22, 74]} />
-      <ambientLight ref={ambient} intensity={0.84} color={tint} />
-      <hemisphereLight ref={hemisphere} args={['#ffe6c4', '#3a2740', 1.5]} />
+      <color attach="background" args={[HALL_PALETTE.background]} />
+      <fog ref={fog} attach="fog" args={[HALL_PALETTE.background, 30, 100]} />
+      <ambientLight ref={ambient} intensity={0.6} color={tint} />
+      <hemisphereLight ref={hemisphere} args={[HALL_PALETTE.key, HALL_PALETTE.carpet, 1.15]} />
       <directionalLight
         ref={key}
         position={[4, 9, 8]}
-        intensity={2.1}
-        color="#ffdfb4"
+        intensity={1.75}
+        color={HALL_PALETTE.key}
         castShadow={shadows}
         shadow-mapSize-width={shadowMapSize}
         shadow-mapSize-height={shadowMapSize}
@@ -197,49 +200,73 @@ function HallLighting({
  * HUD: both write to the same piece of client-side state, neither touches the
  * server's record of which cells are marked.
  */
-export const MARKER_COLORS = ['#dc2626', '#2563eb', '#16a34a', '#7c3aed'] as const;
+export const MARKER_COLORS = MARKER_PALETTE;
 
 function MarkerTray3D({
   selectedColor,
   onSelect,
+  enabled,
 }: {
   selectedColor: string;
   onSelect: (color: string) => void;
+  enabled: boolean;
 }) {
   return (
-    <group position={[0.5, 0, 0.02]}>
-      <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[0.12, 0.18]} />
-        <meshStandardMaterial color="#241d2e" roughness={0.7} />
+    <group position={[0.22, 0.02, -DECK_RADIUS + 0.28]}>
+      <mesh receiveShadow>
+        <boxGeometry args={[0.46, 0.026, 0.29]} />
+        <meshStandardMaterial color={HALL_PALETTE.metal} roughness={0.76} />
       </mesh>
       {MARKER_COLORS.map((color, index) => {
         const selected = color === selectedColor;
         return (
-          <mesh
+          <group
             key={color}
-            position={[-0.045 + index * 0.03, 0.016 + (selected ? 0.008 : 0), 0]}
-            rotation={[Math.PI / 2, 0, 0]}
-            castShadow
-            onPointerDown={(event) => {
+            position={[-0.15 + index * 0.1, 0.024 + (selected ? 0.016 : 0), 0]}
+            onClick={(event) => {
               event.stopPropagation();
-              onSelect(color);
+              if (enabled && event.delta < 5) onSelect(color);
             }}
           >
-            <cylinderGeometry args={[0.0095, 0.0095, 0.13, 8]} />
-            <meshStandardMaterial
-              color={color}
-              roughness={0.42}
-              emissive={selected ? color : '#000000'}
-              emissiveIntensity={selected ? 0.6 : 0}
-            />
-          </mesh>
+            {/* Generous invisible target: selecting a pen is not a dexterity test. */}
+            <mesh>
+              <boxGeometry args={[0.085, 0.05, 0.26]} />
+              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+            </mesh>
+            {selected && (
+              <mesh position={[0, -0.009, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[0.075, 0.255]} />
+                <meshBasicMaterial color={HALL_PALETTE.interaction} transparent opacity={0.75} />
+              </mesh>
+            )}
+            <group rotation={[Math.PI / 2, 0, 0]}>
+              <mesh castShadow>
+                <cylinderGeometry args={[0.014, 0.014, 0.17, 10]} />
+                <meshStandardMaterial color={HALL_PALETTE.paper} roughness={0.5} />
+              </mesh>
+              <mesh position={[0, 0.075, 0]}>
+                <cylinderGeometry args={[0.016, 0.016, 0.06, 10]} />
+                <meshStandardMaterial color={color} roughness={0.45} />
+              </mesh>
+              <mesh position={[0, -0.075, 0]}>
+                <cylinderGeometry args={[0.015, 0.012, 0.04, 10]} />
+                <meshStandardMaterial color={color} roughness={0.78} />
+              </mesh>
+              <mesh position={[0, -0.103, 0]} rotation={[Math.PI, 0, 0]}>
+                <coneGeometry args={[0.008, 0.02, 8]} />
+                <meshStandardMaterial color={color} roughness={0.98} />
+              </mesh>
+            </group>
+          </group>
         );
       })}
     </group>
   );
 }
-
 function Scene(props: BingoRoomSceneProps) {
+  const readyCallback = useRef(props.onSceneReady);
+  readyCallback.current = props.onSceneReady;
+  useEffect(() => { readyCallback.current?.(); }, []);
   const {
     phase,
     players,
@@ -325,8 +352,8 @@ function Scene(props: BingoRoomSceneProps) {
   const crowdTiers = useMemo(() => {
     const candidates = occupancy.occupants
       .filter((occupant) => !occupant.isLocal)
-      .map((occupant) => ({ id: occupant.id, x: occupant.seat.x, z: occupant.seat.z }));
-    return selectCrowdTiers(candidates, crowdOrigin[0], crowdOrigin[1], budgetFor(props.quality));
+      .map((occupant) => ({ id: occupant.id, x: occupant.seat.x, z: occupant.seat.z, isPlayer: occupant.kind === 'PLAYER' }));
+    return selectHallCrowdTiers(candidates, crowdOrigin[0], crowdOrigin[1], props.quality);
   }, [occupancy.occupants, crowdOrigin, props.quality]);
 
   const byId = useMemo(
@@ -347,6 +374,7 @@ function Scene(props: BingoRoomSceneProps) {
           seat: occupant.seat,
           shirtColor: occupant.appearance.shirtColor ?? '#7357bd',
           skinTone: occupant.appearance.skinTone ?? '#e0b49a',
+          hairColor: resolveAvatarAppearance(occupant.appearance).hairColor,
           phase: occupant.phase,
         })),
     [crowdTiers, byId],
@@ -362,10 +390,11 @@ function Scene(props: BingoRoomSceneProps) {
    */
   const furniture = useMemo(() => {
     const [ox, oz] = crowdOrigin;
-    const nearSq = FURNITURE_DETAIL_RADIUS * FURNITURE_DETAIL_RADIUS;
+    const detailRadius = FURNITURE_DETAIL_RADIUS[props.quality];
+    const nearSq = detailRadius * detailRadius;
     const within = (x: number, z: number) => (x - ox) ** 2 + (z - oz) ** 2 <= nearSq;
 
-    const nearTables = TABLES.filter((table) => within(table.x, table.z));
+    const nearTables = TABLES.filter((table) => table.index === occupancy.localSeat?.tableIndex || within(table.x, table.z));
     const nearTableIndices = new Set(nearTables.map((table) => table.index));
     return {
       nearTables,
@@ -373,7 +402,7 @@ function Scene(props: BingoRoomSceneProps) {
       nearSeats: SEATS.filter((seat) => nearTableIndices.has(seat.tableIndex)),
       farSeats: SEATS.filter((seat) => !nearTableIndices.has(seat.tableIndex)),
     };
-  }, [crowdOrigin]);
+  }, [crowdOrigin, occupancy.localSeat?.tableIndex, props.quality]);
 
   /**
    * Chairs a click should seat you in.
@@ -418,7 +447,9 @@ function Scene(props: BingoRoomSceneProps) {
         eyeHeightScale={eyeHeightScale}
         reducedMotion={reducedMotion}
         headBob={props.headBob}
-        focusStage={phase === 'COUNTDOWN' && props.stance === 'SEATED'}
+        focusCard={props.focusCard}
+        selectedCard={props.selectedCard}
+        cardCount={myCards.length}
         inputEnabled={props.inputEnabled}
         onInteract={props.onInteract}
         onTargetChange={props.onTargetChange}
@@ -426,7 +457,7 @@ function Scene(props: BingoRoomSceneProps) {
         onRequestExitPointerLock={props.onRequestExitPointerLock}
       />
 
-      <BingoHallEnvironment mood={mood} accentLights={profile.accentLights} shadows={shadows} />
+      <BingoHallEnvironment mood={mood} accentLights={profile.accentLights} shadows={shadows} reducedMotion={reducedMotion} />
 
       <BingoStage
         currentNumber={currentNumber}
@@ -516,13 +547,13 @@ function Scene(props: BingoRoomSceneProps) {
             markerColor={props.markerColor}
             selectedIndex={props.selectedCard}
             focused={props.focusCard}
-            interactive={props.manualMarking && (phase === 'PLAYING' || phase === 'EVENT_ACTIVE')}
+            interactive={props.inputEnabled && props.stance === 'SEATED' && props.manualMarking && (phase === 'PLAYING' || phase === 'EVENT_ACTIVE')}
             reducedMotion={reducedMotion}
             onSelect={props.onSelectCard}
             onToggleCell={props.onMarkCell}
           />
           {props.manualMarking && (
-            <MarkerTray3D selectedColor={props.markerColor} onSelect={props.onSelectMarker} />
+            <MarkerTray3D selectedColor={props.markerColor} onSelect={props.onSelectMarker} enabled={props.inputEnabled && props.stance === 'SEATED'} />
           )}
         </group>
       )}
@@ -555,7 +586,7 @@ function Scene(props: BingoRoomSceneProps) {
 const CROWD_RESAMPLE_DISTANCE = 4;
 
 /** How far detailed tables and chairs are drawn. Two table pitches. */
-const FURNITURE_DETAIL_RADIUS = 12;
+const FURNITURE_DETAIL_RADIUS: Record<HallQuality, number> = { LOW: 6, MEDIUM: 8, HIGH: 12 };
 
 function useCrowdOrigin(): readonly [number, number] {
   const [origin, setOrigin] = useState<readonly [number, number]>([SPAWN.x, SPAWN.z]);
@@ -574,10 +605,11 @@ function useCrowdOrigin(): readonly [number, number] {
 
 export default function BingoRoomScene(props: BingoRoomSceneProps) {
   const profile = RENDER_PROFILES[props.quality];
+  const showPerformance = import.meta.env.DEV && new URLSearchParams(window.location.search).get('perf') === '1';
   return (
     <SceneBoundary {...(props.onSceneError ? { onError: props.onSceneError } : {})}>
       <Canvas
-        shadows={props.shadows}
+        shadows={props.shadows ? 'percentage' : false}
         dpr={[profile.dpr[0], profile.dpr[1]]}
         // Starts where the player actually spawns. A literal here was fine in a
         // small room and puts the camera in the middle of the tables in a large
@@ -590,6 +622,7 @@ export default function BingoRoomScene(props: BingoRoomSceneProps) {
           gl.toneMappingExposure = 1.06;
         }}
       >
+        {showPerformance && <DevRenderProbe quality={props.quality} />}
         <Suspense fallback={null}>
           <Scene {...props} />
         </Suspense>

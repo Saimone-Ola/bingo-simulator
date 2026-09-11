@@ -39,6 +39,8 @@ export const BINGO_CLAIM_TIERS = ['CINQUINA', 'BINGO'] as const;
 export type BingoClaimTier = (typeof BINGO_CLAIM_TIERS)[number];
 
 export type RoomBingoConfig = {
+  /** Explicit solo practice. Decorative guests never count as competitors. */
+  training: boolean;
   minPlayers: number;
   maxPlayers: number;
   startMode: BingoStartMode;
@@ -70,6 +72,8 @@ export interface ItalianBingoCard {
 }
 
 export interface BingoPlayerSummary {
+  participation: 'VISITOR' | 'PARTICIPANT' | 'SPECTATOR';
+  purchaseInProgress: boolean;
   sessionId: string;
   userId: string;
   displayName: string;
@@ -86,6 +90,13 @@ export interface BingoPlayerSummary {
 }
 
 export interface BingoSnapshotPayload {
+  roundId: string;
+  nextRoundConfig: RoomBingoConfig | null;
+  economicsLocked: boolean;
+  preparationEndsAt: number | null;
+  startBlockedReason: BingoActionRejectedPayload['reason'] | null;
+  claimWindow: { tier: BingoClaimTier; drawIndex: number; closesAt: number } | null;
+  results: BingoRoundResult[];
   roomName: string;
   roomCode: string;
   round: number;
@@ -146,6 +157,23 @@ export interface BingoWinnerPayload {
   prizeCredits: number;
 }
 
+export interface BingoRoundResult extends BingoWinnerPayload {
+  resultId: string;
+  roundId: string;
+  drawIndex: number;
+  status: 'PENDING' | 'PAID';
+  sharedWith: number;
+}
+
+export interface BingoPurchaseConfirmedPayload {
+  requestId: string;
+  roundId: string;
+  purchaseId: string;
+  quantity: number;
+  totalCredits: number;
+  balance: number;
+}
+
 export interface BingoClaimRejectedPayload {
   round: number;
   tier: BingoClaimTier;
@@ -154,10 +182,13 @@ export interface BingoClaimRejectedPayload {
     | 'wrong_phase'
     | 'invalid_card'
     | 'incomplete_result'
+    | 'claim_window_closed'
+    | 'event_paused'
     | 'already_awarded';
 }
 
 export interface BingoActionRejectedPayload {
+  requestId?: string;
   action: keyof typeof BINGO_CLIENT_MESSAGES;
   reason:
     | 'invalid_payload'
@@ -168,6 +199,12 @@ export interface BingoActionRejectedPayload {
     | 'cards_required'
     | 'already_purchased'
     | 'purchase_in_progress'
+    | 'purchase_failed'
+    | 'round_changed'
+    | 'preparation_open'
+    | 'players_disconnected'
+    | 'start_cancelled'
+    | 'round_cancelling'
     | 'insufficient_credits'
     | 'manual_marking_only'
     | 'invalid_cell'
@@ -183,9 +220,11 @@ export interface BingoPongPayload {
 export const BINGO_CLIENT_MESSAGES = {
   purchaseCards: 'bingo_purchase_cards',
   setReady: 'bingo_set_ready',
+  setPreparing: 'bingo_set_preparing',
   updateConfig: 'bingo_update_config',
   startGame: 'bingo_start_game',
   cancelStart: 'bingo_cancel_start',
+  cancelRound: 'bingo_cancel_round',
   markCell: 'bingo_mark_cell',
   claim: 'bingo_claim',
   ping: 'bingo_ping',
@@ -196,6 +235,8 @@ export const BINGO_CLIENT_MESSAGES = {
 } as const;
 
 export const BINGO_SERVER_MESSAGES = {
+  purchaseConfirmed: 'bingo_purchase_confirmed',
+  roundCancelled: 'bingo_round_cancelled',
   snapshot: 'bingo_snapshot',
   ballCalled: 'bingo_ball_called',
   winner: 'bingo_winner',
@@ -211,6 +252,7 @@ const requestIdSchema = z.string().trim().min(8).max(80);
 
 export const bingoPurchaseSchema = z
   .object({
+    roundId: z.string().uuid(),
     quantity: z.number().int().min(1).max(12),
     markingMode: z.enum(BINGO_MARKING_MODES),
     requestId: requestIdSchema,
@@ -218,9 +260,11 @@ export const bingoPurchaseSchema = z
   .strict();
 
 export const bingoReadySchema = z.object({ ready: z.boolean() }).strict();
+export const bingoPreparingSchema = z.object({ preparing: z.boolean() }).strict();
 
 export const bingoConfigSchema = z
   .object({
+    training: z.boolean().optional(),
     startMode: z.enum(BINGO_START_MODES),
     countdownSeconds: z.number().int().min(5).max(180),
     numberCallInterval: z.number().int().min(2_500).max(12_000),
@@ -232,6 +276,7 @@ export const bingoConfigSchema = z
 
 export const bingoMarkSchema = z
   .object({
+    roundId: z.string().uuid(),
     round: z.number().int().positive(),
     cardIndex: z.number().int().min(0).max(11),
     cellIndex: z.number().int().min(0).max(ITALIAN_CARD_CELL_COUNT - 1),
@@ -241,6 +286,7 @@ export const bingoMarkSchema = z
 
 export const bingoClaimSchema = z
   .object({
+    roundId: z.string().uuid(),
     round: z.number().int().positive(),
     tier: z.enum(BINGO_CLAIM_TIERS),
     cardIndex: z.number().int().min(0).max(11),

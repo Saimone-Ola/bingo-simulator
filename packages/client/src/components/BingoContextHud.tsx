@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import type { BingoPhase, BingoPlayerSummary, ItalianBingoCard } from '@bingo/shared';
-import type { InteractionTarget } from '../three/bingo/PlayerMovementController';
-import type { PlayerStance } from '../three/bingo/movement';
+import { useEffect, useRef, useState } from "react";
+import type {
+  BingoPhase,
+  BingoPlayerSummary,
+  ItalianBingoCard,
+} from "@bingo/shared";
+import type { InteractionTarget } from "../three/bingo/PlayerMovementController";
+import type { PlayerStance } from "../three/bingo/movement";
 
 /**
  * Thin heads-up display drawn over the hall.
@@ -13,16 +17,18 @@ import type { PlayerStance } from '../three/bingo/movement';
  */
 
 const PROMPT_LABEL: Record<Exclude<InteractionTarget, null>, string> = {
-  RECEPTION: 'acquistare le cartelle',
-  SIT: 'sederti al tuo posto',
-  STAND: 'alzarti dal tavolo',
+  RECEPTION: "acquistare le cartelle",
+  SIT: "sederti al tuo posto",
+  STAND: "alzarti dal tavolo",
 };
 
 export function InteractionPrompt({ target }: { target: InteractionTarget }) {
   if (!target) return null;
   return (
-    <div className="pointer-events-none absolute bottom-32 left-1/2 -translate-x-1/2 rounded-xl border border-white/15 bg-black/65 px-4 py-2 text-center text-sm font-bold text-white shadow-2xl backdrop-blur">
-      <kbd className="mr-2 rounded-md border border-white/25 bg-white/10 px-2 py-0.5 font-mono text-xs">E</kbd>
+    <div className="pointer-events-none absolute bottom-32 left-1/2 hidden -translate-x-1/2 rounded-xl border border-content-primary/15 bg-surface-950/65 px-4 py-2 text-center text-sm font-bold text-content-primary shadow-2xl backdrop-blur sm:block">
+      <kbd className="mr-2 rounded-md border border-content-primary/25 bg-content-primary/10 px-2 py-0.5 font-mono text-xs">
+        E
+      </kbd>
       per {PROMPT_LABEL[target]}
     </div>
   );
@@ -33,7 +39,7 @@ export function Crosshair({ visible }: { visible: boolean }) {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/60 shadow-[0_0_6px_rgb(0_0_0_/_0.8)]"
+      className="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-content-primary/60 shadow-hud"
     />
   );
 }
@@ -56,44 +62,57 @@ export interface BingoContextHudProps {
   me: BingoPlayerSummary | undefined;
   onSelectCard: (index: number) => void;
   onSelectMarker: (color: string) => void;
-  onClaim: (tier: 'CINQUINA' | 'BINGO') => void;
+  onClaim: (tier: "CINQUINA" | "BINGO") => void;
   onToggleSeat: () => void;
   onFocusCard: () => void;
   focusCard: boolean;
 }
 
 export default function BingoContextHud(props: BingoContextHudProps) {
-  const playing = props.phase === 'PLAYING' || props.phase === 'EVENT_ACTIVE';
+  const playing = props.phase === "PLAYING" || props.phase === "EVENT_ACTIVE";
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pb-3 sm:px-4 sm:pb-4">
       <div className="mx-auto flex max-w-5xl flex-wrap items-end justify-between gap-2">
         {/* Left: draw status, mirrored from the stage screen for accessibility */}
-        <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-white/10 bg-[#100c1c]/78 p-2 pr-4 shadow-xl backdrop-blur-md">
+        <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-content-primary/10 bg-surface-900/78 p-2 pr-4 shadow-xl backdrop-blur-md">
           <div
-            className="grid h-12 w-12 place-items-center rounded-full border-2 border-white/50 bg-gradient-to-br from-amber-200 via-amber-400 to-orange-600 font-display text-lg font-black text-[#3a1702]"
+            className="grid h-12 w-12 place-items-center rounded-full border-2 border-content-primary/50 bg-gradient-to-br from-accent-300 via-accent-400 to-accent-600 font-display text-lg font-black text-content-inverse"
             aria-live="polite"
           >
-            {props.currentNumber ?? '—'}
+            {props.currentNumber ?? "—"}
           </div>
-          <div className="text-[11px] leading-tight">
-            <p className="font-black uppercase tracking-[0.14em] text-cyan-300">
+          <div className="text-xs leading-tight">
+            <p className="font-black uppercase tracking-[0.14em] text-info-400">
               {props.countdownSeconds !== null
                 ? `Inizio tra ${props.countdownSeconds}s`
                 : props.secondsToNext !== null
-                  ? `Prossimo tra ${props.secondsToNext <= 0 ? '<1' : props.secondsToNext}s`
-                  : 'Regia server'}
+                  ? `Prossimo tra ${props.secondsToNext <= 0 ? "<1" : props.secondsToNext}s`
+                  : "Regia server"}
             </p>
-            <p className="text-white/55">{props.drawnCount}/90 estratti</p>
-            <p className={props.connected ? 'text-emerald-300/80' : 'text-amber-300'}>
-              {props.connected ? '● sincronizzato' : '○ riconnessione…'}
+            <p className="text-content-primary/55">
+              {props.drawnCount}/90 estratti
+            </p>
+            {props.cards.length > 0 && (
+              <p className="text-content-secondary">
+                {props.manualMarking
+                  ? "Segni manuali"
+                  : "Segnatura assistita · dichiari tu"}
+              </p>
+            )}
+            <p
+              className={
+                props.connected ? "text-success-400/80" : "text-accent-300"
+              }
+            >
+              {props.connected ? "● sincronizzato" : "○ riconnessione…"}
             </p>
           </div>
         </div>
 
         {/* Centre: card selector and pens */}
         {props.cards.length > 0 && (
-          <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-2xl border border-white/10 bg-[#100c1c]/78 p-2 shadow-xl backdrop-blur-md">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-2xl border border-content-primary/10 bg-surface-900/78 p-2 shadow-xl backdrop-blur-md">
             {props.cards.map((card, index) => (
               <button
                 key={card.id}
@@ -102,15 +121,15 @@ export default function BingoContextHud(props: BingoContextHudProps) {
                 aria-pressed={props.selectedCard === index}
                 className={`h-9 w-9 rounded-lg border text-xs font-black transition ${
                   props.selectedCard === index
-                    ? 'border-amber-200 bg-amber-300 text-[#2b1703]'
-                    : 'border-white/12 bg-white/5 text-white hover:bg-white/12'
+                    ? "border-accent-300 bg-accent-300 text-content-inverse"
+                    : "border-content-primary/12 bg-content-primary/5 text-content-primary hover:bg-content-primary/12"
                 }`}
               >
                 {index + 1}
               </button>
             ))}
             {props.manualMarking && (
-              <div className="ml-1 flex items-center gap-1 border-l border-white/10 pl-2">
+              <div className="ml-1 flex items-center gap-1 border-l border-content-primary/10 pl-2">
                 {props.markerColors.map((color) => (
                   <button
                     key={color}
@@ -119,7 +138,9 @@ export default function BingoContextHud(props: BingoContextHudProps) {
                     aria-label={`Pennarello ${color}`}
                     aria-pressed={props.markerColor === color}
                     className={`h-6 w-6 rounded-full border-2 transition ${
-                      props.markerColor === color ? 'scale-110 border-white' : 'border-white/25'
+                      props.markerColor === color
+                        ? "scale-110 border-content-primary"
+                        : "border-content-primary/25"
                     }`}
                     style={{ backgroundColor: color }}
                   />
@@ -129,13 +150,13 @@ export default function BingoContextHud(props: BingoContextHudProps) {
             <button
               type="button"
               onClick={props.onFocusCard}
-              className={`ml-1 rounded-lg border px-2.5 py-2 text-[11px] font-black transition ${
+              className={`ml-1 rounded-lg border px-2.5 py-2 text-xs font-black transition ${
                 props.focusCard
-                  ? 'border-amber-200 bg-amber-300 text-[#2b1703]'
-                  : 'border-white/12 bg-white/5 text-white hover:bg-white/12'
+                  ? "border-accent-300 bg-accent-300 text-content-inverse"
+                  : "border-content-primary/12 bg-content-primary/5 text-content-primary hover:bg-content-primary/12"
               }`}
             >
-              {props.focusCard ? 'Rilascia' : 'Zoom cartella'}
+              {props.focusCard ? "Guarda la sala" : "Guarda cartella"}
             </button>
           </div>
         )}
@@ -145,25 +166,33 @@ export default function BingoContextHud(props: BingoContextHudProps) {
           <button
             type="button"
             onClick={props.onToggleSeat}
-            className="rounded-xl border border-white/12 bg-[#100c1c]/78 px-3 py-2.5 text-xs font-black text-white shadow-xl backdrop-blur-md hover:bg-white/10"
+            className="rounded-xl border border-content-primary/12 bg-surface-900/78 px-3 py-2.5 text-xs font-black text-content-primary shadow-xl backdrop-blur-md hover:bg-content-primary/10"
           >
-            {props.stance === 'SEATED' ? '↑ Alzati' : '↓ Siediti'}
+            {props.stance === "SEATED" ? "↑ Alzati" : "↓ Siediti"}
           </button>
           {playing && (
             <>
               <button
                 type="button"
-                disabled={props.awardedCinquina || props.cards.length === 0}
-                onClick={() => props.onClaim('CINQUINA')}
-                className="rounded-xl border border-cyan-300/40 bg-cyan-400/20 px-3 py-2.5 font-display text-sm font-black text-cyan-50 shadow-xl backdrop-blur-md transition hover:bg-cyan-400/30 disabled:opacity-30"
+                disabled={
+                  !props.connected ||
+                  props.awardedCinquina ||
+                  props.cards.length === 0
+                }
+                onClick={() => props.onClaim("CINQUINA")}
+                className="rounded-xl border border-info-400/40 bg-info-400/20 px-3 py-2.5 font-display text-sm font-black text-info-400 shadow-xl backdrop-blur-md transition hover:bg-info-400/30 disabled:opacity-30"
               >
                 CINQUINA
               </button>
               <button
                 type="button"
-                disabled={props.awardedBingo || props.cards.length === 0}
-                onClick={() => props.onClaim('BINGO')}
-                className="rounded-xl bg-gradient-to-r from-amber-300 to-orange-500 px-4 py-2.5 font-display text-base font-black text-[#281502] shadow-xl transition hover:-translate-y-0.5 disabled:opacity-30"
+                disabled={
+                  !props.connected ||
+                  props.awardedBingo ||
+                  props.cards.length === 0
+                }
+                onClick={() => props.onClaim("BINGO")}
+                className="rounded-xl bg-gradient-to-r from-accent-300 to-accent-500 px-4 py-2.5 font-display text-base font-black text-content-inverse shadow-xl transition hover:-translate-y-0.5 disabled:opacity-30"
               >
                 ★ BINGO
               </button>
@@ -187,40 +216,59 @@ export function ReadyRoster({
   open: boolean;
   onToggle: () => void;
 }) {
-  const [ready, total] = players.reduce<[number, number]>(
-    (accumulator, player) => [accumulator[0] + (player.ready ? 1 : 0), accumulator[1] + 1],
-    [0, 0],
-  );
+  const [ready, total] = players
+    .filter((player) => player.participation === "PARTICIPANT")
+    .reduce<
+      [number, number]
+    >((accumulator, player) => [accumulator[0] + (player.ready ? 1 : 0), accumulator[1] + 1], [0,
+        0]);
 
   return (
-    <div className="pointer-events-auto absolute right-3 top-20 z-20 w-56 max-w-[70vw] overflow-hidden rounded-2xl border border-white/10 bg-[#100c1c]/82 shadow-xl backdrop-blur-md sm:right-4">
+    <div className="pointer-events-auto relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-content-primary/10 bg-surface-900/82 shadow-xl backdrop-blur-md sm:absolute sm:right-4 sm:top-20 sm:z-20 sm:w-56 sm:max-w-[70vw]">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] font-black uppercase tracking-[0.16em] text-violet-200 hover:bg-white/5"
+        aria-label={`In sala · ${ready}/${total} pronti`}
+        className="flex w-full items-center justify-between gap-1 px-3 py-2 text-left text-2xs font-black uppercase tracking-[0.06em] text-brand-200 hover:bg-content-primary/5 sm:text-xs sm:tracking-[0.16em]"
       >
-        In sala · {ready}/{total} pronti
-        <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+        <span>In sala · {ready}/{total}<span className="hidden sm:inline"> pronti</span></span>
+        <span aria-hidden="true">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
-        <ul className="max-h-64 overflow-y-auto border-t border-white/8 px-2 py-1.5">
+        <ul className="max-h-64 overflow-y-auto border-t border-content-primary/8 px-2 py-1.5">
           {players.map((player) => (
             <li
               key={player.sessionId}
-              className="flex items-center gap-2 rounded-lg px-1.5 py-1 text-[11px]"
+              className="flex items-center gap-2 rounded-lg px-1.5 py-1 text-xs"
             >
               <span
                 className={`h-2 w-2 shrink-0 rounded-full ${
-                  player.ready ? 'bg-emerald-400' : player.loading ? 'bg-amber-400' : 'bg-white/25'
+                  player.ready
+                    ? "bg-success-400"
+                    : player.loading
+                      ? "bg-accent-400"
+                      : "bg-content-primary/25"
                 }`}
               />
-              <span className={`min-w-0 flex-1 truncate font-bold ${player.sessionId === mySessionId ? 'text-amber-200' : 'text-white/85'}`}>
-                {player.isHost && '♛ '}
+              <span
+                className={`min-w-0 flex-1 truncate font-bold ${player.sessionId === mySessionId ? "text-accent-300" : "text-content-primary/85"}`}
+              >
+                {player.isHost && "♛ "}
                 {player.displayName}
               </span>
-              <span className="shrink-0 text-white/40">
-                {player.isNpc ? 'NPC' : `${player.cardCount}×`}
+              <span className="shrink-0 text-content-primary/40">
+                {player.isNpc
+                  ? "Pubblico"
+                  : player.purchaseInProgress
+                    ? "Acquisto…"
+                    : !player.connected
+                      ? "Scollegato"
+                      : player.participation === "VISITOR"
+                        ? "Visitatore"
+                        : player.participation === "SPECTATOR"
+                          ? "Spettatore"
+                          : `${player.cardCount}×`}
               </span>
             </li>
           ))}
@@ -237,7 +285,7 @@ export function HallToast({
   onDismiss,
 }: {
   message: string | null;
-  tone: 'info' | 'error' | 'prize';
+  tone: "info" | "error" | "prize";
   onDismiss: () => void;
 }) {
   const [visible, setVisible] = useState(false);
@@ -258,7 +306,7 @@ export function HallToast({
         setVisible(false);
         dismissRef.current();
       },
-      tone === 'prize' ? 6_000 : 4_500,
+      tone === "prize" ? 6_000 : 4_500,
     );
     return () => window.clearTimeout(timer);
   }, [message, tone]);
@@ -266,15 +314,20 @@ export function HallToast({
   if (!message || !visible) return null;
 
   const palette =
-    tone === 'prize'
-      ? 'border-amber-200/40 bg-[#3b2409]/92 text-amber-50'
-      : tone === 'error'
-        ? 'border-red-300/35 bg-[#2a1219]/92 text-red-100'
-        : 'border-white/15 bg-[#141026]/92 text-white';
+    tone === "prize"
+      ? "border-accent-300/40 bg-surface-850/92 text-accent-100"
+      : tone === "error"
+        ? "border-danger-400/35 bg-surface-850/92 text-danger-400"
+        : "border-content-primary/15 bg-surface-900/92 text-content-primary";
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-20 z-30 flex justify-center px-4" aria-live="assertive">
-      <p className={`pointer-events-auto max-w-md rounded-2xl border px-4 py-3 text-center text-sm font-bold shadow-2xl backdrop-blur-md ${palette}`}>
+    <div
+      className="pointer-events-none absolute inset-x-0 top-20 z-50 flex justify-center px-4"
+      aria-live="assertive"
+    >
+      <p
+        className={`pointer-events-auto max-w-md rounded-2xl border px-4 py-3 text-center text-sm font-bold shadow-2xl backdrop-blur-md ${palette}`}
+      >
         {message}
       </p>
     </div>

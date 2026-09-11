@@ -13,6 +13,7 @@ import {
   type CardPlacement,
 } from './cardLayout';
 import { createCardFaceTexture, type CardFaceTexture } from './textures';
+import { HALL_PALETTE } from '../palette';
 import { damp } from './movement';
 
 /**
@@ -75,6 +76,8 @@ function InteractiveBingoCard({
     faceRef.current?.redraw({ card, drawn, markerColor, title, active: selected });
   }, [card, drawn, markerColor, selected, title, face]);
 
+  useEffect(() => () => { gl.domElement.style.cursor = ''; }, [gl]);
+
   useFrame((_state, delta) => {
     const node = group.current;
     if (!node) return;
@@ -93,7 +96,8 @@ function InteractiveBingoCard({
     node.rotation.x = damp(node.rotation.x, targetTilt, lambda, delta);
   });
 
-  const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
+  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    if (event.delta > 5) return;
     event.stopPropagation();
     if (!selected) {
       onSelect(placement.index);
@@ -117,7 +121,7 @@ function InteractiveBingoCard({
     >
       <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow>
         <boxGeometry args={[CARD_WIDTH, CARD_DEPTH, CARD_THICKNESS]} />
-        <meshStandardMaterial color={selected ? '#fff6de' : '#eadfc4'} roughness={0.82} />
+        <meshStandardMaterial color={selected ? HALL_PALETTE.paper : HALL_PALETTE.paperMuted} roughness={0.82} />
       </mesh>
       {/* The face mesh only appears once its texture exists. Swapping a
           material from "no map" to "map" leaves Three's compiled program
@@ -135,7 +139,7 @@ function InteractiveBingoCard({
             setHovered(false);
             gl.domElement.style.cursor = '';
           }}
-          onPointerDown={handlePointerDown}
+          onClick={handleClick}
         >
           <planeGeometry args={[CARD_WIDTH, CARD_DEPTH]} />
           <meshBasicMaterial map={face.texture} toneMapped={false} />
@@ -144,7 +148,7 @@ function InteractiveBingoCard({
       {selected && (
         <mesh position={[0, 0.0008, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[CARD_WIDTH + 0.026, CARD_DEPTH + 0.026]} />
-          <meshBasicMaterial color="#f6c453" transparent opacity={0.55} />
+          <meshBasicMaterial color={HALL_PALETTE.interaction} transparent opacity={0.55} />
         </mesh>
       )}
     </group>

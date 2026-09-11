@@ -16,7 +16,7 @@ in denaro reale, nessun riferimento a marchi di casinò esistenti.
 | 0 | Monorepo, TypeScript, PostgreSQL + migrazioni, auth, ledger, deploy | ✅ fatto |
 | 1 | Hub 3D, avatar, movimento multiplayer Colyseus, chat | ✅ fatto |
 | 2 | Sala bingo funzionante end-to-end | ✅ fatto |
-| 3 | Sale create dagli utenti, regole, codice privato, inviti | 🟡 ingresso per codice, creazione no |
+| 3 | Sale create dagli utenti, regole, codice privato, inviti | 🟡 sale temporanee per codice e regia; editor persistente no |
 | 4 | Slot giocabili + editor con calcolo RTP | ✅ fatto |
 | 5 | Editor visivo sala, pattern personalizzati, sale slot | 🟡 sala slot fatta, editor sala no |
 | 6 | Price game, eventi a orario, jackpot | ⬜ |
@@ -51,7 +51,10 @@ bingo-simulator/          <- radice del repository
 ├── DESIGN.md       design system: token, componenti, regole
 ├── docs/
 │   ├── THESIS_VERTICAL_SLICE.md   cosa è implementato e verificato, e cosa no
-│   └── DEMO.md                    script della dimostrazione e domande attese
+│   ├── DEMO.md                    dimostrazione e prova con due amici in LAN
+│   ├── ROUND_CORRECTNESS.md       acquisti, avvio, dichiarazioni e regole italiane
+│   ├── BINGO_RECOVERY.md          persistenza, recupero e limiti operativi
+│   └── VISUAL_IMPROVEMENTS.md     sala, personaggi, leggibilità e prestazioni
 ├── pnpm-workspace.yaml
 └── vercel.json     deploy del solo client
 ```
@@ -172,6 +175,46 @@ basso.
 | `Invalid environment configuration` all'avvio | Manca una variabile in `packages/server/.env`, oppure i due segreti JWT sono uguali |
 | Errore di compilazione di `argon2` durante `pnpm install` | Manca un compilatore C++. Installa i [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) con il workload "Desktop development with C++", poi rilancia `pnpm install` |
 
+### Giocare a Bingo con un amico
+
+Usate due account distinti e aprite lo stesso indirizzo, per esempio
+`http://localhost:5173/bingo?room=AMICI-01` sul computer che esegue il gioco.
+Due profili browser separati permettono una prova sullo stesso computer;
+per due dispositivi seguite la [configurazione LAN](docs/DEMO.md#prova-con-due-amici-in-lan).
+
+L'ingresso lascia liberi di camminare, personalizzare l'avatar e scegliere una
+sedia: non compra cartelle e non assegna un posto automaticamente. L'host apre
+**Regia** e sceglie fascia, avvio ed eventi prima che qualcuno compri. Servono
+almeno due acquirenti reali; il pubblico NPC è decorativo. Per una prova da soli
+si attiva **Allenamento** prima dell'acquisto.
+
+Ogni giocatore sceglie modalità e quantità: fino a tre cartelle manuali oppure
+sei automatiche. L'acquisto di sei consegna una sestina che copre 1–90 una volta.
+La conferma riporta quantità e totale; un retry verifica lo stesso acquisto.
+Dal primo acquisto in elaborazione le condizioni del round sono congelate e le
+successive modifiche della Regia valgono per il prossimo round.
+
+In **Tutti pronti** ogni acquirente conferma «Sono pronto». In **Host** l'host
+avvia quando i partecipanti sono disponibili. **Temporizzata** attende la
+scadenza di preparazione, poi avvia il countdown se i prerequisiti sono
+soddisfatti. Acquisti pendenti, risorse in caricamento e partecipanti scollegati
+impediscono la partenza. Chi arriva dal countdown in poi osserva e può comprare
+nel round seguente.
+
+I segni manuali sono un ausilio visivo correggibile; la modalità automatica
+segna gli estratti su tutte le proprie cartelle. In entrambe si dichiara
+cinquina o bingo sulla cartella selezionata. Il server verifica gli estratti e,
+alla prima dichiarazione valida, ferma l'estrazione per cinque secondi per
+accogliere eventuali ex aequo. Il riepilogo distingue accrediti pendenti e
+pagati. Il round seguente richiede un nuovo acquisto e conserva la preferenza
+di segnatura.
+
+L'host può annullare e rimborsare durante preparazione o countdown. Un esito DB
+incerto mantiene il round bloccato mentre il server ritenta. Durante il gioco
+l'uscita volontaria non rimborsa la puntata. Regole, casi limite e limiti del
+recupero sono in [ROUND_CORRECTNESS](docs/ROUND_CORRECTNESS.md) e
+[BINGO_RECOVERY](docs/BINGO_RECOVERY.md).
+
 ### Comandi utili
 
 | Comando | Cosa fa |
@@ -192,12 +235,16 @@ basso.
 ## Test
 
 ```bash
-pnpm test                                        # unit test, nessun database
-TEST_DATABASE_URL=postgresql://… pnpm test       # include i test di integrità del ledger
+pnpm test                                        # controllare prima le variabili DB esportate
+TEST_DATABASE_URL=postgresql://…/bingo_test pnpm test  # Bash: database dedicato
 ```
 
-I test che toccano il database si auto-escludono senza `TEST_DATABASE_URL`, così
-`pnpm test` gira sempre su un checkout pulito. Coprono, ad oggi:
+Le suite database usano `TEST_DATABASE_URL`, oppure `DATABASE_URL` se la prima
+non è impostata. Si escludono solo quando entrambe mancano dall'ambiente del
+processo. Usare un database o branch dedicato ai test, distinto anche da quello
+della demo in esecuzione. In PowerShell impostare prima
+`$env:TEST_DATABASE_URL = "postgresql://…/bingo_test"`, poi eseguire `pnpm test`.
+La copertura comprende:
 
 - hashing Argon2id, rotazione e riuso dei refresh token, manomissione del JWT;
 - **saldo materializzato sempre uguale alla somma del ledger**;
@@ -212,9 +259,16 @@ I test che toccano il database si auto-escludono senza `TEST_DATABASE_URL`, cos�
 - sweep di collisione su tutta la piazza: nessun punto lascia dentro la
   geometria;
 - il filtro testi non inciampa su "analisi", "assistente", "costante".
+- cartelle italiane, sestina, acquisti concorrenti e idempotenti con consegna
+  atomica, configurazione congelata e avvio con partecipanti reali;
+- ex aequo, segnatura manuale e automatica, richieste di round precedenti,
+  riconnessione, accrediti pendenti e recupero senza doppie scritture;
+- due connessioni Bingo reali con estratti concordanti, risultati condivisi e
+  misura dei byte dello snapshot, distinguendo persone e pubblico decorativo.
 
-Ancora da scrivere (fasi successive): verifica vincita su tutti i pattern
-bingo, simulazione di 100.000 spin per l'RTP.
+I pattern Bingo personalizzati restano fuori dal perimetro attuale; cinquina e
+bingo italiani sono coperti. Per verifiche e limiti consultare la
+[vertical slice](docs/THESIS_VERTICAL_SLICE.md).
 
 Attenzione: `ledger_entries` è append-only, quindi i test di integrità lasciano
 le loro righe nel database. Puntali su un branch Neon usa-e-getta.
@@ -233,9 +287,24 @@ l'affermazione di un fatto.
 
 ### RNG e verificabilità
 
-`crypto.randomBytes` lato server. Ogni partita e ogni spin salvano
-`server_seed_hash` (pubblicato prima) e `server_seed` (pubblicato dopo), così
-chiunque può rigiocare la sequenza e verificarla.
+Il server genera i seed. Il Bingo usa un'estrazione deterministica senza
+duplicati e pubblica l'hash del seed; non espone ancora una rivelazione finale
+che permetta al browser di ricostruire l'intera estrazione. La verifica pubblica
+con hash prima e seed dopo è disponibile per gli spin, come descritto sotto.
+
+### Round Bingo persistenti
+
+Ogni round usa una UUID distinta dal numero visibile. Cartelle, acquisto,
+addebito e montepremi sono salvati nella stessa transazione. Il gruppo di
+vincitori ex aequo viene persistito prima degli accrediti, che restano
+ritentabili con lo stesso ID.
+
+Il riavvio non ricostruisce estrazione, timer o eventi: onora i premi persistiti
+e rimborsa gli acquisti dei round interrotti. Se il gruppo vincitore del Bingo
+è già persistito, completa gli accrediti e chiude il round senza rimborso.
+Un solo processo autorevole può usare il database; un lock di proprietà
+impedisce che un secondo server recuperi round ancora attivi. Dettagli e
+procedura locale in [BINGO_RECOVERY](docs/BINGO_RECOVERY.md).
 
 ### Slot: motore, verificabilità, pubblicazione
 
@@ -295,13 +364,14 @@ risposta del login è uguale per email inesistente e password sbagliata.
 
 ### Modello dati
 
-19 tabelle, tutte in `packages/server/src/db/schema/`:
+Tabelle in `packages/server/src/db/schema/`:
 
 | File | Tabelle |
 |---|---|
 | `identity.ts` | `users`, `auth_sessions`, `avatars`, `wardrobe_sets`, `friendships` |
 | `economy.ts` | `wallets`, `ledger_entries`, `items`, `user_inventory` |
 | `rooms.ts` | `rooms`, `bingo_configs`, `bingo_games`, `bingo_cards` |
+| `bingoRuntime.ts` | `bingo_rounds`, `bingo_purchases`, `bingo_issued_cards`, `bingo_awards` |
 | `slots.ts` | `slot_machines`, `slot_spins` |
 | `world.ts` | `prize_games`, `prize_claims` |
 | `social.ts` | `chat_messages`, `reports` |

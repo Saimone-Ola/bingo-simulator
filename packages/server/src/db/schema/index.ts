@@ -5,3 +5,4 @@ export * from './rooms';
 export * from './slots';
 export * from './world';
 export * from './social';
+export * from './bingoRuntime';

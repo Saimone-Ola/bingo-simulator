@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { AdaptiveDpr, Stats } from '@react-three/drei';
-import { PCFSoftShadowMap } from 'three';
+
 import Crowd from './Crowd';
 import HubWorld from './HubWorld';
 import PlayerController from './PlayerController';
@@ -21,13 +21,13 @@ import PlayerController from './PlayerController';
 export default function HubScene({ showStats = false }: { showStats?: boolean }) {
   return (
     <Canvas
-      shadows
+      shadows="percentage"
       camera={{ position: [0, 5, 14], fov: 52, near: 0.1, far: 140 }}
       dpr={[1, 1.75]}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       onCreated={({ gl }) => {
         gl.toneMappingExposure = 1.18;
-        gl.shadowMap.type = PCFSoftShadowMap;
+
 
         // Diagnostic hook. Draw calls and triangle count are the numbers that
         // actually describe the scene's cost, and unlike FPS they do not
