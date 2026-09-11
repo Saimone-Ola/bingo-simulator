@@ -1,6 +1,11 @@
-import { useMemo } from 'react';
-import { ITALIAN_CARD_COLUMNS } from '@bingo/shared';
-import { cardToWatch, rankCards, progressLabel, type CardLike } from '../lib/sestinaLayout';
+import { useMemo } from "react";
+import { ITALIAN_CARD_COLUMNS } from "@bingo/shared";
+import {
+  cardToWatch,
+  rankCards,
+  progressLabel,
+  type CardLike,
+} from "../lib/sestinaLayout";
 
 /**
  * Six cards at once, without the confusion.
@@ -23,25 +28,29 @@ export interface SestinaGridProps {
   markStyle?: MarkStyle;
   markColor?: string;
   onToggleCell?: (cardIndex: number, cellIndex: number) => void;
+  selectedCard?: number;
+  onSelectCard?: (index: number) => void;
 }
 
-export const MARK_STYLES = ['CROSS', 'CIRCLE', 'CHIP', 'FILL'] as const;
+export const MARK_STYLES = ["CROSS", "CIRCLE", "CHIP", "FILL"] as const;
 export type MarkStyle = (typeof MARK_STYLES)[number];
 
 export const MARK_STYLE_LABELS: Record<MarkStyle, string> = {
-  CROSS: 'Croce',
-  CIRCLE: 'Cerchio',
-  CHIP: 'Gettone',
-  FILL: 'Riempimento',
+  CROSS: "Croce",
+  CIRCLE: "Cerchio",
+  CHIP: "Gettone",
+  FILL: "Riempimento",
 };
 
 export default function SestinaGrid({
   cards,
   drawnNumbers,
   markedByCard,
-  markStyle = 'CROSS',
-  markColor = '#e2434f',
+  markStyle = "CROSS",
+  markColor = "#e2434f",
   onToggleCell,
+  selectedCard,
+  onSelectCard,
 }: SestinaGridProps) {
   const drawn = useMemo(() => new Set(drawnNumbers), [drawnNumbers]);
   const watch = useMemo(() => cardToWatch(cards, drawn), [cards, drawn]);
@@ -52,6 +61,21 @@ export default function SestinaGrid({
 
   return (
     <div className="grid gap-2">
+      {onSelectCard && (
+        <div className="flex flex-wrap gap-2">
+          {cards.map((_card, index) => (
+            <button
+              key={index}
+              type="button"
+              aria-pressed={selectedCard === index}
+              onClick={() => onSelectCard(index)}
+              className={`rounded-lg border px-4 py-3 text-sm font-bold ${selectedCard === index ? "border-brand-300 bg-brand-500 text-content-primary" : "border-surface-500 bg-surface-850 text-content-secondary"}`}
+            >
+              Cartella {index + 1}
+            </button>
+          ))}
+        </div>
+      )}
       {watch && (
         <p
           aria-live="polite"
@@ -62,21 +86,30 @@ export default function SestinaGrid({
       )}
 
       {/* Scrolling row on a phone, two columns of three on anything wider. */}
-      <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-3">
-        {cards.map((card, index) => (
-          <SestinaCard
-            key={index}
-            card={card}
-            index={index}
-            drawn={drawn}
-            marked={markedByCard?.[index]}
-            highlighted={watch?.index === index}
-            bestRow={progress.get(index)?.bestRow ?? 0}
-            markStyle={markStyle}
-            markColor={markColor}
-            {...(onToggleCell ? { onToggleCell } : {})}
-          />
-        ))}
+      <div
+        className={
+          selectedCard !== undefined
+            ? "overflow-x-auto"
+            : "-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-3"
+        }
+      >
+        {cards.map((card, index) =>
+          selectedCard !== undefined && selectedCard !== index ? null : (
+            <SestinaCard
+              key={index}
+              card={card}
+              index={index}
+              drawn={drawn}
+              marked={markedByCard?.[index]}
+              highlighted={watch?.index === index}
+              bestRow={progress.get(index)?.bestRow ?? 0}
+              markStyle={markStyle}
+              markColor={markColor}
+              expanded={selectedCard !== undefined}
+              {...(onToggleCell ? { onToggleCell } : {})}
+            />
+          ),
+        )}
       </div>
     </div>
   );
@@ -92,6 +125,7 @@ function SestinaCard({
   markStyle,
   markColor,
   onToggleCell,
+  expanded,
 }: {
   card: CardLike;
   index: number;
@@ -102,16 +136,17 @@ function SestinaCard({
   markStyle: MarkStyle;
   markColor: string;
   onToggleCell?: (cardIndex: number, cellIndex: number) => void;
+  expanded?: boolean;
 }) {
   const markedSet = useMemo(() => new Set(marked ?? []), [marked]);
 
   return (
     <section
       aria-label={`Cartella ${index + 1}`}
-      className={`min-w-[15rem] shrink-0 snap-center rounded-xl border p-1.5 transition-colors sm:min-w-0 ${
+      className={`${expanded ? "min-w-sm" : "min-w-60 sm:min-w-0"} shrink-0 snap-center rounded-xl border p-1.5 transition-colors ${
         highlighted
-          ? 'border-accent-400 bg-accent-500/10 shadow-glow-accent'
-          : 'border-surface-600 bg-surface-850'
+          ? "border-accent-400 bg-accent-500/10 shadow-glow-accent"
+          : "border-surface-600 bg-surface-850"
       }`}
     >
       <div className="flex items-center justify-between px-1 pb-1">
@@ -123,7 +158,9 @@ function SestinaCard({
 
       <div
         className="grid gap-px rounded-md bg-surface-700 p-px"
-        style={{ gridTemplateColumns: `repeat(${ITALIAN_CARD_COLUMNS}, minmax(0, 1fr))` }}
+        style={{
+          gridTemplateColumns: `repeat(${ITALIAN_CARD_COLUMNS}, minmax(0, 1fr))`,
+        }}
       >
         {card.cells.map((value, cellIndex) => (
           <Cell
@@ -133,6 +170,7 @@ function SestinaCard({
             marked={markedSet.has(cellIndex)}
             markStyle={markStyle}
             markColor={markColor}
+            expanded={expanded}
             {...(onToggleCell && value !== null
               ? { onClick: () => onToggleCell(index, cellIndex) }
               : {})}
@@ -150,6 +188,7 @@ function Cell({
   markStyle,
   markColor,
   onClick,
+  expanded,
 }: {
   value: number | null;
   called: boolean;
@@ -157,27 +196,39 @@ function Cell({
   markStyle: MarkStyle;
   markColor: string;
   onClick?: () => void;
+  expanded?: boolean;
 }) {
   if (value === null) {
-    return <span aria-hidden="true" className="aspect-square rounded-sm bg-surface-800/60" />;
+    return (
+      <span
+        aria-hidden="true"
+        className="aspect-square rounded-sm bg-surface-800/60"
+      />
+    );
   }
 
-  const Tag = onClick ? 'button' : 'span';
+  const Tag = onClick ? "button" : "span";
 
   return (
     <Tag
-      {...(onClick ? { type: 'button' as const, onClick } : {})}
-      aria-label={marked ? `${value}, segnato` : called ? `${value}, estratto` : String(value)}
-      className={`relative grid aspect-square place-items-center rounded-sm text-[0.68rem] font-bold tabular transition-colors ${
+      {...(onClick ? { type: "button" as const, onClick } : {})}
+      aria-label={
         marked
-          ? 'text-white'
+          ? `${value}, segnato`
           : called
-            ? 'bg-brand-500/25 text-content-primary'
-            : 'bg-surface-900 text-content-secondary'
+            ? `${value}, estratto`
+            : String(value)
+      }
+      className={`relative grid aspect-square place-items-center rounded-sm ${expanded ? "text-xl" : "text-2xs"} font-bold tabular transition-colors ${
+        marked
+          ? "text-white"
+          : called
+            ? "bg-brand-500/25 text-content-primary"
+            : "bg-surface-900 text-content-secondary"
       }`}
       style={
         marked
-          ? markStyle === 'FILL'
+          ? markStyle === "FILL"
             ? { backgroundColor: markColor }
             : // A tint so a marked cell reads at a glance even at the size six
               // cards force, without anything sitting over the number.
@@ -191,13 +242,15 @@ function Cell({
         the card is for.
       */}
       <span className="relative z-10">{value}</span>
-      {marked && markStyle !== 'FILL' && <Mark style={markStyle} colour={markColor} />}
+      {marked && markStyle !== "FILL" && (
+        <Mark style={markStyle} colour={markColor} />
+      )}
     </Tag>
   );
 }
 
 function Mark({ style, colour }: { style: MarkStyle; colour: string }) {
-  if (style === 'CHIP') {
+  if (style === "CHIP") {
     return (
       <span
         aria-hidden="true"
@@ -206,7 +259,7 @@ function Mark({ style, colour }: { style: MarkStyle; colour: string }) {
       />
     );
   }
-  if (style === 'CIRCLE') {
+  if (style === "CIRCLE") {
     return (
       <span
         aria-hidden="true"

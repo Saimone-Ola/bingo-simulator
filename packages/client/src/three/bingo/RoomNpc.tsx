@@ -1,3 +1,6 @@
+import { HALL_PALETTE } from '../palette';
+import { WAITER_PATH, WAITER_SPEED, waiterPose } from './waiterPath';
+import { dampAngle } from './movement';
 import { useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -79,7 +82,7 @@ function GuestCards({ count, seat }: { count: number; seat: SeatPlacement }) {
           receiveShadow
         >
           <planeGeometry args={[CARD_WIDTH, CARD_DEPTH]} />
-          <meshStandardMaterial color="#eadfc4" roughness={0.85} />
+          <meshStandardMaterial color={HALL_PALETTE.paperMuted} roughness={0.85} />
         </mesh>
       ))}
     </group>
@@ -154,17 +157,6 @@ const WAITER_APPEARANCE = {
  * The loop deliberately hugs the outer walls: a route through the middle of the
  * hall walks the waiter straight through a seated player's camera.
  */
-const WAITER_PATH: ReadonlyArray<readonly [number, number]> = [
-  [-9.3, 7.4],
-  [-9.3, -6.9],
-  [-2.0, -7.4],
-  [2.0, -7.4],
-  [9.3, -6.9],
-  [9.3, 7.4],
-  [1.6, 7.6],
-  [-1.6, 7.6],
-];
-
 /**
  * Waiter doing laps of the hall with a tray.
  *
@@ -178,19 +170,10 @@ export function WanderingWaiter({ reducedMotion, paused }: { reducedMotion: bool
   useFrame((_state, delta) => {
     const node = group.current;
     if (!node || reducedMotion) return;
-    if (!paused) progress.current += delta * 0.055;
-    const total = WAITER_PATH.length;
-    const scaled = (progress.current % 1) * total;
-    const index = Math.floor(scaled);
-    const t = scaled - index;
-    const from = WAITER_PATH[index % total];
-    const to = WAITER_PATH[(index + 1) % total];
-    if (!from || !to) return;
-    const x = from[0] + (to[0] - from[0]) * t;
-    const z = from[1] + (to[1] - from[1]) * t;
-    node.position.set(x, 0, z);
-    node.rotation.y = Math.atan2(to[0] - from[0], to[1] - from[1]);
-  });
+    if (!paused) progress.current += Math.min(delta, 0.1) * WAITER_SPEED;
+    const pose = waiterPose(progress.current);
+    node.position.set(pose.x, 0, pose.z);
+    node.rotation.y = dampAngle(node.rotation.y, pose.yaw, 8, delta);  });
 
   return (
     <group ref={group} position={[WAITER_PATH[0]?.[0] ?? 0, 0, WAITER_PATH[0]?.[1] ?? 0]}>
@@ -202,9 +185,10 @@ export function WanderingWaiter({ reducedMotion, paused }: { reducedMotion: bool
         rotationY={0}
         scale={0.96}
         phase={0.9}
+        carryingTray
         reducedMotion={reducedMotion}
       />
-      <group position={[0.34, 1.16, 0.16]} rotation={[0, 0, -0.12]}>
+      <group position={[0.3, 1.04, 0.58]}>
         <mesh castShadow>
           <cylinderGeometry args={[0.17, 0.17, 0.018, 14]} />
           <meshStandardMaterial color="#c9b48a" roughness={0.42} metalness={0.28} />

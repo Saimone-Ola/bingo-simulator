@@ -140,20 +140,16 @@ suite('hub room', () => {
     const startX = start?.x ?? 0;
     const startZ = start?.z ?? 0;
 
-    // Flood: an intent every 5 ms for a second, i.e. four times the tick rate
-    // and well past the rate limit. Extra messages must buy no extra distance.
+    // Send fixed bursts: Windows timers can clamp 5ms waits to ~15ms. The
+    // assertion needs a real flood, not a benchmark of the test host's timer.
     const startedAt = Date.now();
     let seq = 0;
     while (Date.now() - startedAt < 1000) {
-      seq += 1;
-      client.send(CLIENT_MESSAGES.moveIntent, {
-        seq,
-        dirX: 1,
-        dirZ: 0,
-        run: false,
-        facing: 0,
-      });
-      await wait(5);
+      for (let burst = 0; burst < 5; burst += 1) {
+        seq += 1;
+        client.send(CLIENT_MESSAGES.moveIntent, { seq, dirX: 1, dirZ: 0, run: false, facing: 0 });
+      }
+      await wait(20);
     }
     const elapsedSeconds = (Date.now() - startedAt) / 1000;
     await wait(120);

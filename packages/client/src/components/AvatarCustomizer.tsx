@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
   AVATAR_ACCESSORIES,
@@ -20,7 +20,9 @@ import {
   type ResolvedAvatarAppearance,
 } from '@bingo/shared';
 import { api } from '../lib/api';
-import ProceduralCharacter from '../three/ProceduralCharacter';
+import ProceduralCharacter, { type CharacterAnimationState } from '../three/ProceduralCharacter';
+import { HALL_PALETTE } from '../three/palette';
+import { useHallSettings } from '../store/hallSettings';
 import { Button, HudCard } from './ui';
 
 const BODY_LABELS: Record<AvatarBodyType, string> = {
@@ -222,10 +224,14 @@ function TurntableCharacter({
   appearance,
   spin,
   manualAngle,
+  expression,
+  reducedMotion,
 }: {
   appearance: AvatarAppearance;
   spin: boolean;
   manualAngle: number;
+  expression: CharacterAnimationState;
+  reducedMotion: boolean;
 }) {
   const group = useRef<THREE.Group>(null);
   const angle = useRef(manualAngle);
@@ -241,55 +247,87 @@ function TurntableCharacter({
     <group ref={group}>
       <ProceduralCharacter
         appearance={appearance}
-        state="IDLE"
+        state={expression}
         personality="CALM"
         position={[0, -1.02, 0]}
         rotationY={0}
         scale={0.98}
         phase={0.4}
+        reducedMotion={reducedMotion}
       />
     </group>
   );
 }
 
+function PreviewCamera({ closeUp, heightCm }: { closeUp: boolean; heightCm: number }) {
+  const { camera } = useThree();
+  const target = useMemo(() => new THREE.Vector3(), []);
+  useFrame((_state, delta) => {
+    const faceY = -1.02 + 1.75 * (heightCm / 175) * 0.98;
+    const y = closeUp ? faceY : 0.04;
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, y, 12, delta);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, closeUp ? 1.35 : 3.9, 12, delta);
+    target.set(0, camera.position.y, 0);
+    camera.lookAt(target);
+  });
+  return null;
+}
+
 function AvatarPreview({ appearance }: { appearance: AvatarAppearance }) {
   const [angle, setAngle] = useState(0);
-  const [spin, setSpin] = useState(true);
+  const [spin, setSpin] = useState(false);
+  const [closeUp, setCloseUp] = useState(false);
+  const [expression, setExpression] = useState<CharacterAnimationState>('IDLE');
+  const reducedMotion = useHallSettings((state) => state.reducedMotion);
 
   return (
     <div className="grid gap-2">
       <div
-        className="relative mx-auto h-[22rem] w-full max-w-xs overflow-hidden rounded-2xl border border-brand-300/25 bg-gradient-to-b from-[#493a9b] via-[#28215b] to-[#121026] shadow-panel"
+        className="relative mx-auto h-96 w-full max-w-xs overflow-hidden rounded-2xl border border-brand-300/25 bg-gradient-to-b from-brand-900 via-surface-700 to-surface-900 shadow-panel"
         aria-label="Anteprima tridimensionale del personaggio"
       >
         <Canvas
-          shadows
+          shadows="percentage"
           dpr={[1, 1.5]}
-          camera={{ position: [0, 0.78, 3.5], fov: 36, near: 0.1, far: 20 }}
+          camera={{ position: [0, 0.04, 3.9], fov: 36, near: 0.1, far: 20 }}
           gl={{ antialias: true, powerPreference: 'high-performance' }}
           onCreated={({ gl }) => {
             gl.toneMapping = THREE.ACESFilmicToneMapping;
             gl.toneMappingExposure = 1.08;
           }}
         >
-          <ambientLight intensity={1.2} color="#b9abff" />
-          <hemisphereLight args={['#fff1d3', '#1e173d', 1.3]} />
+          <ambientLight intensity={0.6} color={HALL_PALETTE.fill} />
+          <hemisphereLight args={[HALL_PALETTE.key, HALL_PALETTE.wallSide, 1.3]} />
           <directionalLight
             position={[2.5, 4, 3]}
-            intensity={3}
-            color="#ffe0b3"
+            intensity={2}
+            color={HALL_PALETTE.key}
             castShadow
             shadow-mapSize-width={1024}
             shadow-mapSize-height={1024}
           />
-          <spotLight position={[-2.5, 2.8, 2]} intensity={12} angle={0.55} penumbra={0.8} color="#8b5cf6" />
+          <directionalLight position={[-2.5, 1.8, -1]} intensity={1.8} color={HALL_PALETTE.interactionLight} />
           <mesh position={[0, -1.08, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
             <circleGeometry args={[1.45, 40]} />
-            <meshStandardMaterial color="#17132d" roughness={0.76} />
+            <meshStandardMaterial color={HALL_PALETTE.wallSide} roughness={0.76} />
           </mesh>
-          <TurntableCharacter appearance={appearance} spin={spin} manualAngle={angle} />
+          <TurntableCharacter appearance={appearance} spin={spin && !reducedMotion} manualAngle={angle} expression={expression} reducedMotion={reducedMotion} />
+          <PreviewCamera closeUp={closeUp} heightCm={appearance.heightCm} />
         </Canvas>
       </div>
+      <div className="flex gap-2">
+        <Button variant={closeUp ? 'secondary' : 'primary'} size="sm" onClick={() => setCloseUp(false)}>Figura intera</Button>
+        <Button variant={closeUp ? 'primary' : 'secondary'} size="sm" onClick={() => { setCloseUp(true); setSpin(false); setAngle(0); }}>Viso</Button>
+      </div>
+      <label className="grid gap-1 text-xs text-content-secondary">
+        Prova un gesto
+        <select value={expression} onChange={(event) => setExpression(event.target.value as CharacterAnimationState)} className="rounded-md border border-surface-500 bg-surface-850 px-3 py-2 text-content-primary">
+          <option value="IDLE">In attesa</option>
+          <option value="WAVE">Saluto</option>
+          <option value="APPLAUD">Applauso</option>
+          <option value="LAUGH">Risata</option>
+        </select>
+      </label>
       <div className="flex items-center gap-2">
         <input
           type="range"
@@ -303,7 +341,7 @@ function AvatarPreview({ appearance }: { appearance: AvatarAppearance }) {
           aria-label="Ruota il personaggio"
           className="flex-1 accent-brand-400"
         />
-        <Button variant="ghost" size="sm" onClick={() => setSpin((value) => !value)}>
+        <Button variant="ghost" size="sm" disabled={reducedMotion} onClick={() => setSpin((value) => !value)}>
           {spin ? '⏸ Ferma' : '↻ Ruota'}
         </Button>
       </div>

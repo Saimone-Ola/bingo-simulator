@@ -93,6 +93,37 @@
   --color-content-muted: #8d87ad;
   --color-content-inverse: #0b0a1a;
 
+  /* Physical hall materials, mirrored by three/palette.ts. */
+  --color-hall-wall: #25233d;
+  --color-hall-wall-side: #201e35;
+  --color-hall-ceiling: #302d49;
+  --color-hall-carpet: #24243f;
+  --color-hall-carpet-weave: #30304e;
+  --color-hall-carpet-shade: #1e1d34;
+  --color-hall-aisle: #36334f;
+  --color-hall-timber: #695247;
+  --color-hall-timber-edge: #887164;
+  --color-hall-felt: #34474f;
+  --color-hall-upholstery: #554a76;
+  --color-hall-metal: #232132;
+  --color-hall-trim: #918ba9;
+  --color-hall-key: #fff2e2;
+  --color-hall-ink: #252132;
+  --color-hall-paper: #f7f3e9;
+  --color-hall-paper-muted: #e6e0d3;
+  --color-hall-paper-blank: #d5d0c7;
+  --color-hall-paper-grid: #b3ad9f;
+  --color-avatar-eye-white: #fbf7f3;
+  --color-avatar-pupil: #211b2c;
+  --color-avatar-mouth: #713d4a;
+  --color-avatar-blush: #ce7d7e;
+  --color-avatar-shoe: #282532;
+  --color-avatar-sole: #ddd9d1;
+  --color-marker-red: #dc2626;
+  --color-marker-blue: #2563eb;
+  --color-marker-green: #16a34a;
+  --color-marker-purple: #7c3aed;
+
   /* ---------------------------------------------------------------------
    * Typography
    * ------------------------------------------------------------------ */

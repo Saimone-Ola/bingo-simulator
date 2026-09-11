@@ -84,12 +84,12 @@ export default function SeatMap({
 
   return (
     <div
-      className="pointer-events-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-surface-500/70 bg-surface-900/95 shadow-panel backdrop-blur-xl"
+      className="pointer-events-auto flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-surface-500/70 bg-surface-900/95 shadow-panel backdrop-blur-xl"
       role="dialog"
       aria-modal="true"
       aria-labelledby="seatmap-title"
     >
-      <div className="flex items-start justify-between gap-3 border-b border-surface-600/70 px-4 py-3">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-surface-600/70 px-4 py-3">
         <div>
           <h2 id="seatmap-title" className="font-display text-lg font-black">
             Scegli il posto
@@ -98,7 +98,7 @@ export default function SeatMap({
             {freeCount} liberi su {HALL_SEATS.length} · il palco è in alto
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {mySeatId && (
             <Button variant="ghost" size="sm" onClick={onLeave} disabled={busy}>
               Alzati
@@ -111,19 +111,20 @@ export default function SeatMap({
       </div>
 
       {error && (
-        <p role="alert" className="mx-4 mt-3 rounded-lg border border-warning-500/50 bg-warning-500/10 px-3 py-2 text-sm text-warning-400">
+        <p role="alert" className="mx-4 mt-3 shrink-0 rounded-lg border border-warning-500/50 bg-warning-500/10 px-3 py-2 text-sm text-warning-400">
           {error}
         </p>
       )}
 
-      <div className="p-4">
+      <div className="min-h-0 overflow-auto overscroll-contain p-4">
+        <p className="mb-2 text-xs text-content-secondary sm:hidden">Scorri la mappa per raggiungere tutti i tavoli.</p>
         {/* The stage sits above the map rather than over it: an overlay band
             put seats underneath a label nobody could then read. */}
-        <div className="mb-1.5 rounded-lg border border-brand-400/30 bg-brand-500/15 py-1 text-center text-[10px] font-black uppercase tracking-[0.24em] text-brand-300">
+        <div className="mb-1.5 min-w-[600px] rounded-lg border border-brand-400/30 bg-brand-500/15 py-1 text-center text-[10px] font-black uppercase tracking-[0.24em] text-brand-300">
           Palco
         </div>
         <div
-          className="relative w-full rounded-xl border border-surface-600/70 bg-surface-950/70"
+          className="relative w-full min-w-[600px] rounded-xl border border-surface-600/70 bg-surface-950/70"
           style={{ aspectRatio: `${width} / ${depth}` }}
         >
           {HALL_TABLES.map((table) => (

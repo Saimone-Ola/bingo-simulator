@@ -1,3 +1,4 @@
+import { HALL_PALETTE } from '../palette';
 import { useMemo } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import { labelTexture } from './textures';
@@ -125,7 +126,7 @@ export function RoundBingoTable({
   const seed = useMemo(() => stableHash(`table-${table.index}`), [table.index]);
   const props = useMemo(() => buildProps(seed, table.seatCount), [seed, table.seatCount]);
   const numberPlate = useMemo(
-    () => labelTexture(String(table.label), { color: '#f6e6c4', fontScale: 0.72, width: 256, height: 256 }),
+    () => labelTexture(String(table.label), { color: HALL_PALETTE.paper, fontScale: 0.72, width: 256, height: 256 }),
     [table.label],
   );
   const segments = quality === 'LOW' ? 18 : 40;
@@ -135,25 +136,25 @@ export function RoundBingoTable({
       {/* Pedestal */}
       <mesh position={[0, 0.03, 0]} receiveShadow>
         <cylinderGeometry args={[0.42, 0.48, 0.06, segments]} />
-        <meshStandardMaterial color="#1d1720" roughness={0.5} metalness={0.5} />
+        <meshStandardMaterial color={HALL_PALETTE.metal} roughness={0.5} metalness={0.5} />
       </mesh>
       <mesh position={[0, 0.4, 0]} castShadow={shadows}>
         <cylinderGeometry args={[0.13, 0.19, 0.7, quality === 'LOW' ? 8 : 16]} />
-        <meshStandardMaterial color="#241c26" roughness={0.45} metalness={0.55} />
+        <meshStandardMaterial color={HALL_PALETTE.metal} roughness={0.45} metalness={0.55} />
       </mesh>
 
       {/* Table top: wooden edge, felt surface, raised lip */}
       <mesh position={[0, TABLE_TOP_HEIGHT - 0.035, 0]} castShadow={shadows} receiveShadow>
         <cylinderGeometry args={[table.radius, table.radius, 0.07, segments]} />
-        <meshStandardMaterial color="#6a4232" roughness={0.55} metalness={0.06} />
+        <meshStandardMaterial color={HALL_PALETTE.timber} roughness={0.55} metalness={0.06} />
       </mesh>
       <mesh position={[0, TABLE_TOP_HEIGHT + 0.002, 0]} receiveShadow>
         <cylinderGeometry args={[table.radius - 0.05, table.radius - 0.05, 0.012, segments]} />
-        <meshStandardMaterial color="#3b2440" roughness={0.94} />
+        <meshStandardMaterial color={HALL_PALETTE.felt} roughness={0.94} />
       </mesh>
       <mesh position={[0, TABLE_TOP_HEIGHT + 0.012, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[table.radius - 0.024, 0.022, 6, segments]} />
-        <meshStandardMaterial color="#7c5138" roughness={0.5} />
+        <meshStandardMaterial color={HALL_PALETTE.timberEdge} roughness={0.5} />
       </mesh>
 
       {/* Number plate in the middle of the table */}

@@ -3,6 +3,7 @@ import {
   ITALIAN_CARD_CELL_COUNT,
   bingoClaimSchema,
   bingoMarkSchema,
+  bingoPurchaseSchema,
 } from '@bingo/shared';
 import {
   autoMarkCalledNumbers,
@@ -23,8 +24,9 @@ import {
  */
 
 describe('mark protocol', () => {
+  const roundId = '7e7e9345-7291-4afb-8697-013183b0bb31';
   it('requires a card index and a cell index inside a real card', () => {
-    const base = { round: 1, cardIndex: 0, cellIndex: 0, marked: true };
+    const base = { round: 1, roundId, cardIndex: 0, cellIndex: 0, marked: true };
     expect(bingoMarkSchema.safeParse(base).success).toBe(true);
     expect(bingoMarkSchema.safeParse({ ...base, cardIndex: undefined }).success).toBe(false);
     expect(bingoMarkSchema.safeParse({ ...base, cardIndex: -1 }).success).toBe(false);
@@ -39,6 +41,7 @@ describe('mark protocol', () => {
     expect(
       bingoMarkSchema.safeParse({
         round: 1,
+        roundId,
         cardIndex: 0,
         cellIndex: 0,
         marked: true,
@@ -48,12 +51,18 @@ describe('mark protocol', () => {
   });
 
   it('carries the card index on a claim as well, and pins it to a real card', () => {
-    const base = { round: 1, tier: 'BINGO' as const, cardIndex: 2, requestId: 'claim-12345678' };
+    const base = { round: 1, roundId, tier: 'BINGO' as const, cardIndex: 2, requestId: 'claim-12345678' };
     expect(bingoClaimSchema.safeParse(base).success).toBe(true);
     expect(bingoClaimSchema.safeParse({ ...base, cardIndex: 40 }).success).toBe(false);
     expect(
       bingoClaimSchema.safeParse({ ...base, winningNumbers: [1, 2, 3, 4, 5] }).success,
     ).toBe(false);
+  });
+
+  it('requires a persistent round UUID on every purchase, mark and claim', () => {
+    expect(bingoPurchaseSchema.safeParse({ quantity: 1, markingMode: 'MANUAL', requestId: 'purchase-1234' }).success).toBe(false);
+    expect(bingoMarkSchema.safeParse({ round: 1, cardIndex: 0, cellIndex: 0, marked: true }).success).toBe(false);
+    expect(bingoClaimSchema.safeParse({ round: 1, tier: 'BINGO', cardIndex: 0, requestId: 'claim-1234' }).success).toBe(false);
   });
 });
 

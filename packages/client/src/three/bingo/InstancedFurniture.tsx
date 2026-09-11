@@ -1,3 +1,4 @@
+import { HALL_PALETTE } from '../palette';
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { TABLE_RADIUS, TABLE_TOP_HEIGHT, type SeatPlacement, type TablePlacement } from './hallLayout';
@@ -97,7 +98,7 @@ export default function InstancedFurniture({ tables, seats }: InstancedFurniture
         receiveShadow
       >
         <cylinderGeometry args={[TABLE_RADIUS, TABLE_RADIUS, 0.08, 16]} />
-        <meshStandardMaterial color="#5b2f3a" roughness={0.82} />
+        <meshStandardMaterial color={HALL_PALETTE.felt} roughness={0.82} />
       </instancedMesh>
 
       <instancedMesh
@@ -106,7 +107,7 @@ export default function InstancedFurniture({ tables, seats }: InstancedFurniture
         frustumCulled={false}
       >
         <cylinderGeometry args={[0.16, 0.34, TABLE_TOP_HEIGHT, 10]} />
-        <meshStandardMaterial color="#171220" roughness={0.7} metalness={0.3} />
+        <meshStandardMaterial color={HALL_PALETTE.metal} roughness={0.7} metalness={0.3} />
       </instancedMesh>
 
       <instancedMesh
@@ -115,7 +116,7 @@ export default function InstancedFurniture({ tables, seats }: InstancedFurniture
         frustumCulled={false}
       >
         <boxGeometry args={[0.44, 0.09, 0.44]} />
-        <meshStandardMaterial color="#4b3350" roughness={0.86} />
+        <meshStandardMaterial color={HALL_PALETTE.upholstery} roughness={0.86} />
       </instancedMesh>
 
       <instancedMesh
@@ -124,7 +125,7 @@ export default function InstancedFurniture({ tables, seats }: InstancedFurniture
         frustumCulled={false}
       >
         <boxGeometry args={[0.44, CHAIR_BACK_HEIGHT, 0.08]} />
-        <meshStandardMaterial color="#4b3350" roughness={0.86} />
+        <meshStandardMaterial color={HALL_PALETTE.upholstery} roughness={0.86} />
       </instancedMesh>
     </group>
   );

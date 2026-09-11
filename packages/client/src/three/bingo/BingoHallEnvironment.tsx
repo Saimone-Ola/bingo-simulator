@@ -1,10 +1,11 @@
-import { useMemo, useRef } from 'react';
+import { HALL_PALETTE } from '../palette';
+import { useEffect, useMemo, useRef } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { labelTexture } from './textures';
 import type { HallMood } from './eventChoreography';
-import { CEILING_LAMPS, ENTRANCE, HALL_SHELL, STAGE } from './hallLayout';
+import { CEILING_LAMPS, ENTRANCE, HALL_SHELL, SPAWN, STAGE, TABLES } from './hallLayout';
 
 /**
  * Shell of the hall: floor, walls, ceiling, house lighting and the small
@@ -25,7 +26,7 @@ function Sign({
   rotationY = 0,
   width = 2,
   height = 0.44,
-  color = '#ffe9b8',
+  color = HALL_PALETTE.paper,
   background,
   emissive = 0.9,
 }: {
@@ -77,11 +78,11 @@ function ServiceDoor({ position, rotationY }: { position: [number, number, numbe
 }
 
 /** Slowly cycling advertising panel; pure decoration, never gameplay state. */
-function AdPanel({ position, rotationY }: { position: [number, number, number]; rotationY: number }) {
+function AdPanel({ position, rotationY, reducedMotion }: { position: [number, number, number]; rotationY: number; reducedMotion: boolean }) {
   const material = useRef<THREE.MeshStandardMaterial>(null);
   useFrame(({ clock }) => {
     if (!material.current) return;
-    const pulse = 0.55 + Math.sin(clock.elapsedTime * 0.6 + position[0]) * 0.2;
+    const pulse = reducedMotion ? 0.55 : 0.55 + Math.sin(clock.elapsedTime * 0.6 + position[0]) * 0.12;
     material.current.emissiveIntensity = pulse;
   });
   return (
@@ -110,9 +111,13 @@ function CeilingLamp({
 }) {
   return (
     <group position={[x, HALL_SHELL.ceilingHeight - 0.55, z]}>
+      <mesh position={[0, 0.32, 0]}>
+        <cylinderGeometry args={[0.025, 0.025, 0.44, 6]} />
+        <meshStandardMaterial color={HALL_PALETTE.metal} roughness={0.6} />
+      </mesh>
       <mesh>
         <cylinderGeometry args={[0.34, 0.46, 0.22, 12]} />
-        <meshStandardMaterial color="#2a2033" roughness={0.55} metalness={0.4} />
+        <meshStandardMaterial color={HALL_PALETTE.metal} roughness={0.55} metalness={0.4} />
       </mesh>
       <mesh position={[0, -0.12, 0]}>
         <cylinderGeometry args={[0.42, 0.42, 0.04, 12]} />
@@ -127,10 +132,12 @@ export function BingoHallEnvironment({
   mood,
   accentLights,
   shadows,
+  reducedMotion,
 }: {
   mood: HallMood;
   accentLights: number;
   shadows: boolean;
+  reducedMotion: boolean;
 }) {
   const carpetTexture = useMemo(() => {
     if (typeof document === 'undefined') return null;
@@ -139,16 +146,16 @@ export function BingoHallEnvironment({
     canvas.height = 128;
     const context = canvas.getContext('2d');
     if (!context) return null;
-    context.fillStyle = '#3a2140';
+    context.fillStyle = HALL_PALETTE.carpet;
     context.fillRect(0, 0, 128, 128);
     // A subtle damask-ish speckle keeps the carpet from looking like flat vinyl.
     for (let index = 0; index < 900; index += 1) {
-      const x = Math.random() * 128;
-      const y = Math.random() * 128;
-      context.fillStyle = index % 3 === 0 ? '#4a2a52' : '#311c38';
+      const x = ((index * 47) % 127);
+      const y = ((index * 73) % 127);
+      context.fillStyle = index % 3 === 0 ? HALL_PALETTE.carpetWeave : HALL_PALETTE.carpetShade;
       context.fillRect(x, y, 2, 2);
     }
-    context.strokeStyle = '#5b3363';
+    context.strokeStyle = HALL_PALETTE.carpetWeave;
     context.lineWidth = 2;
     context.beginPath();
     context.arc(64, 64, 34, 0, Math.PI * 2);
@@ -156,7 +163,7 @@ export function BingoHallEnvironment({
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(11, 11);
+    texture.repeat.set(WIDTH / 2, DEPTH / 2);
     texture.colorSpace = THREE.SRGBColorSpace;
     return texture;
   }, []);
@@ -174,7 +181,12 @@ export function BingoHallEnvironment({
     return CEILING_LAMPS.map((lamp, index) => ({ ...lamp, lit: index % stride === 0 }));
   }, [accentLights]);
 
-  const houseColor = mood.emergencyLights ? '#4b60ff' : mood.greenWash ? '#8dff9f' : '#ffd7a3';
+  useEffect(() => () => carpetTexture?.dispose(), [carpetTexture]);
+
+  const houseColor = mood.emergencyLights ? '#4b60ff' : mood.greenWash ? '#8dff9f' : HALL_PALETTE.key;
+  const aisleEnd = SPAWN.z + 1.4;
+  const aisleStart = STAGE.maxZ + 0.2;
+  const tableRows = useMemo(() => [...new Set(TABLES.map((table) => table.z))].sort((a, b) => a - b), []);
 
   return (
     <group>
@@ -184,26 +196,39 @@ export function BingoHallEnvironment({
         {carpetTexture ? (
           <meshStandardMaterial map={carpetTexture} roughness={0.96} metalness={0} color={mood.greenWash ? '#9fe5a8' : '#ffffff'} />
         ) : (
-          <meshStandardMaterial color="#3a2140" roughness={0.96} />
+          <meshStandardMaterial color={HALL_PALETTE.carpet} roughness={0.96} />
         )}
       </mesh>
+
+      {/* A continuous carpet runner makes the entrance-to-stage route readable.
+          Its narrow width stays between the authoritative table islands. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.004, (aisleStart + aisleEnd) / 2]} receiveShadow>
+        <planeGeometry args={[1.3, aisleEnd - aisleStart]} />
+        <meshStandardMaterial color={HALL_PALETTE.aisle} roughness={1} />
+      </mesh>
+      {tableRows.slice(1).map((row, index) => (
+        <mesh key={row} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, (row + tableRows[index]!) / 2]} receiveShadow>
+          <planeGeometry args={[WIDTH - 4, 0.38]} />
+          <meshStandardMaterial color={HALL_PALETTE.carpetWeave} roughness={1} />
+        </mesh>
+      ))}
 
       {/* Walls */}
       <mesh position={[CENTRE_X, HALL_SHELL.wallHeight / 2, HALL_SHELL.minZ - 0.2]} receiveShadow>
         <boxGeometry args={[WIDTH + 1, HALL_SHELL.wallHeight, 0.4]} />
-        <meshStandardMaterial color="#2c1a35" roughness={0.9} />
+        <meshStandardMaterial color={HALL_PALETTE.wall} roughness={0.9} />
       </mesh>
       <mesh position={[CENTRE_X, HALL_SHELL.wallHeight / 2, HALL_SHELL.maxZ + 0.2]} receiveShadow>
         <boxGeometry args={[WIDTH + 1, HALL_SHELL.wallHeight, 0.4]} />
-        <meshStandardMaterial color="#2c1a35" roughness={0.9} />
+        <meshStandardMaterial color={HALL_PALETTE.wall} roughness={0.9} />
       </mesh>
       <mesh position={[HALL_SHELL.minX - 0.2, HALL_SHELL.wallHeight / 2, CENTRE_Z]} receiveShadow>
         <boxGeometry args={[0.4, HALL_SHELL.wallHeight, DEPTH]} />
-        <meshStandardMaterial color="#26182f" roughness={0.92} />
+        <meshStandardMaterial color={HALL_PALETTE.wallSide} roughness={0.92} />
       </mesh>
       <mesh position={[HALL_SHELL.maxX + 0.2, HALL_SHELL.wallHeight / 2, CENTRE_Z]} receiveShadow>
         <boxGeometry args={[0.4, HALL_SHELL.wallHeight, DEPTH]} />
-        <meshStandardMaterial color="#26182f" roughness={0.92} />
+        <meshStandardMaterial color={HALL_PALETTE.wallSide} roughness={0.92} />
       </mesh>
 
       {/* Wainscoting and a gold band that catches the accent lights */}
@@ -211,11 +236,11 @@ export function BingoHallEnvironment({
         <group key={x}>
           <mesh position={[x, 0.55, CENTRE_Z]}>
             <boxGeometry args={[0.08, 1.1, DEPTH - 0.4]} />
-            <meshStandardMaterial color="#3d2a2a" roughness={0.72} />
+            <meshStandardMaterial color={HALL_PALETTE.timber} roughness={0.72} />
           </mesh>
           <mesh position={[x, 1.16, CENTRE_Z]}>
             <boxGeometry args={[0.1, 0.06, DEPTH - 0.4]} />
-            <meshStandardMaterial color="#a4813c" roughness={0.36} metalness={0.72} />
+            <meshStandardMaterial color={HALL_PALETTE.trim} roughness={0.36} metalness={0.72} />
           </mesh>
         </group>
       ))}
@@ -232,8 +257,8 @@ export function BingoHallEnvironment({
       <mesh position={[CENTRE_X, HALL_SHELL.ceilingHeight, CENTRE_Z]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[WIDTH, DEPTH]} />
         <meshStandardMaterial
-          color="#3a2740"
-          emissive="#241830"
+          color={HALL_PALETTE.ceiling}
+          emissive={HALL_PALETTE.wallSide}
           emissiveIntensity={0.55}
           roughness={0.95}
           side={THREE.DoubleSide}
@@ -244,7 +269,7 @@ export function BingoHallEnvironment({
       {[HALL_SHELL.minZ + 0.3, HALL_SHELL.maxZ - 0.3].map((z) => (
         <mesh key={z} position={[CENTRE_X, HALL_SHELL.ceilingHeight - 0.14, z]}>
           <boxGeometry args={[WIDTH, 0.1, 0.14]} />
-          <meshStandardMaterial color="#6b4a52" emissive="#e2a86b" emissiveIntensity={0.5} />
+          <meshStandardMaterial color={HALL_PALETTE.trim} emissive={HALL_PALETTE.fill} emissiveIntensity={0.5} />
         </mesh>
       ))}
 
@@ -294,17 +319,17 @@ export function BingoHallEnvironment({
       <ServiceDoor position={[HALL_SHELL.minX + 0.42, 0, 4.6]} rotationY={Math.PI / 2} />
       <ServiceDoor position={[HALL_SHELL.maxX - 0.42, 0, -2.4]} rotationY={-Math.PI / 2} />
 
-      <AdPanel position={[HALL_SHELL.minX + 0.5, 2.6, -0.4]} rotationY={Math.PI / 2} />
-      <AdPanel position={[HALL_SHELL.maxX - 0.5, 2.6, 2.6]} rotationY={-Math.PI / 2} />
+      <AdPanel position={[HALL_SHELL.minX + 0.5, 2.6, -0.4]} rotationY={Math.PI / 2} reducedMotion={reducedMotion} />
+      <AdPanel position={[HALL_SHELL.maxX - 0.5, 2.6, 2.6]} rotationY={-Math.PI / 2} reducedMotion={reducedMotion} />
 
       {/* Cloakroom niche next to the entrance */}
-      <group position={[HALL_SHELL.minX + 1.4, 0, 8.2]}>
+      <group position={[HALL_SHELL.minX + 1.4, 0, SPAWN.z + 0.6]}>
         <RoundedBox args={[2.4, 1.02, 0.6]} radius={0.06} smoothness={2} position={[0, 0.51, 0]} castShadow={shadows} receiveShadow>
           <meshStandardMaterial color="#3a2437" roughness={0.7} />
         </RoundedBox>
         <mesh position={[0, 1.9, -0.2]}>
           <boxGeometry args={[2.4, 0.05, 0.5]} />
-          <meshStandardMaterial color="#4a3350" roughness={0.75} />
+          <meshStandardMaterial color={HALL_PALETTE.upholstery} roughness={0.75} />
         </mesh>
         {[-0.8, -0.3, 0.2, 0.7].map((offset) => (
           <mesh key={offset} position={[offset, 1.6, -0.2]} castShadow={shadows}>
