@@ -6,7 +6,7 @@ import { sendTeleport } from '../net/hubConnection';
  * Navigation for enterable spaces. The fountain intentionally does not appear:
  * it is a scenic landmark protected by the shared collision model.
  */
-export default function PoiMenu() {
+export default function PoiMenu({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
 
   /** Destinations that have their own room; the rest teleport within the plaza. */
@@ -16,6 +16,7 @@ export default function PoiMenu() {
   };
 
   const enter = (poiId: string) => {
+    onNavigate?.();
     const route = ROUTES[poiId];
     if (route) {
       navigate(route);

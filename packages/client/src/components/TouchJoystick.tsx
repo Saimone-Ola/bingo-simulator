@@ -11,9 +11,7 @@ import { joystick } from '../net/input';
  * The `data-joystick` attribute is how the camera's pointer handler knows to
  * ignore this touch, so dragging the stick does not also swing the camera.
  */
-const RADIUS = 52;
-
-export default function TouchJoystick() {
+export default function TouchJoystick({ compact = false }: { compact?: boolean }) {
   const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
 
@@ -25,16 +23,17 @@ export default function TouchJoystick() {
     let pointerId: number | null = null;
     let originX = 0;
     let originY = 0;
+    let radius = 32;
 
     const update = (dx: number, dy: number) => {
       const distance = Math.hypot(dx, dy);
-      const clamped = distance > RADIUS ? RADIUS / distance : 1;
+      const clamped = distance > radius ? radius / distance : 1;
       const x = dx * clamped;
       const y = dy * clamped;
 
       knob.style.transform = `translate(${x}px, ${y}px)`;
-      joystick.x = x / RADIUS;
-      joystick.y = y / RADIUS;
+      joystick.x = x / radius;
+      joystick.y = y / radius;
       joystick.active = true;
     };
 
@@ -50,6 +49,7 @@ export default function TouchJoystick() {
       event.preventDefault();
       pointerId = event.pointerId;
       const rect = base.getBoundingClientRect();
+      radius = Math.max(1, (rect.width - knob.getBoundingClientRect().width) / 2 - 4);
       originX = rect.left + rect.width / 2;
       originY = rect.top + rect.height / 2;
       base.setPointerCapture(event.pointerId);
@@ -87,12 +87,12 @@ export default function TouchJoystick() {
       ref={baseRef}
       data-joystick="true"
       aria-hidden="true"
-      className="pointer-events-auto relative grid h-32 w-32 touch-none place-items-center rounded-full border border-surface-500 bg-surface-800/60 backdrop-blur"
+      className={`pointer-events-auto relative grid touch-none place-items-center rounded-full border border-surface-500 bg-surface-800/60 ${compact ? 'h-24 w-24' : 'h-32 w-32'}`}
     >
       <div
         ref={knobRef}
         data-joystick="true"
-        className="h-14 w-14 rounded-full border border-brand-400 bg-brand-600/70"
+        className={`rounded-full border border-brand-400 bg-brand-600/70 ${compact ? 'h-10 w-10' : 'h-14 w-14'}`}
       />
     </div>
   );

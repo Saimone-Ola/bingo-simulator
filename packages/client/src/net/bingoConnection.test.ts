@@ -25,7 +25,7 @@ class TestRoom {
   onLeave(callback: (code: number) => void) { this.leaveHandler = callback; }
   emit(type: string, payload: unknown) { this.messages.get(type)?.(payload); }
   snapshot(roundId = ROUND_A, hasCards = false) {
-    this.emit(BINGO_SERVER_MESSAGES.snapshot, { roundId, round: 1, phase: 'CARD_PURCHASE', myCards: hasCards ? [{ id: 'card-1', index: 0, cells: [], markedIndices: [] }] : [] });
+    this.emit(BINGO_SERVER_MESSAGES.snapshot, { roundId, round: 1, phase: 'CARD_PURCHASE', config: {}, players: [], results: [], drawnNumbers: [], seating: [], reservations: [], eventHistory: [], awardedTiers: [], myCards: hasCards ? [{ id: 'card-1', index: 0, cells: [], markedIndices: [] }] : [] });
   }
   lastPurchase() {
     const call = this.purchases().at(-1);
@@ -36,7 +36,7 @@ class TestRoom {
 }
 
 function handlers(): BingoHandlers {
-  return { onStatus: vi.fn(), onSnapshot: vi.fn(), onBall: vi.fn(), onWinner: vi.fn(), onClaimRejected: vi.fn(), onActionRejected: vi.fn(), onPurchaseConfirmed: vi.fn(), onPurchaseWaiting: vi.fn(), onSeating: vi.fn(), onSeatRejected: vi.fn() };
+  return { onConnectionIssue: vi.fn(), onStatus: vi.fn(), onSnapshot: vi.fn(), onBall: vi.fn(), onWinner: vi.fn(), onClaimRejected: vi.fn(), onActionRejected: vi.fn(), onPurchaseConfirmed: vi.fn(), onPurchaseWaiting: vi.fn(), onSeating: vi.fn(), onSeatRejected: vi.fn() };
 }
 
 async function join(target = new TestRoom(), events = handlers()) {
@@ -57,6 +57,51 @@ describe('Bingo purchase acknowledgements and reconnects', () => {
     await leaveBingo();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+
+  it('rejects the legacy production payload before it reaches React or purchase code', async () => {
+    const { target, events } = await join();
+    expect(events.onStatus).not.toHaveBeenCalledWith('connected');
+    target.emit(BINGO_SERVER_MESSAGES.snapshot, { round: 1, myCards: [] });
+    expect(events.onConnectionIssue).toHaveBeenCalledWith('outdated_server');
+    expect(events.onSnapshot).not.toHaveBeenCalled();
+    expect(events.onStatus).toHaveBeenLastCalledWith('failed');
+    expect(purchaseBingoCards(1, 'MANUAL')).toBe(false);
+    expect(target.leave).toHaveBeenCalledOnce();
+    target.snapshot();
+    expect(events.onSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('reports incomplete data without publishing it', async () => {
+    const { target, events } = await join();
+    target.emit(BINGO_SERVER_MESSAGES.snapshot, { roundId: ROUND_A, results: [] });
+    expect(events.onConnectionIssue).toHaveBeenCalledWith('invalid_snapshot');
+    expect(events.onSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('ends an open socket that never sends a room, and allows a clean retry', async () => {
+    const { target, events } = await join();
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(events.onConnectionIssue).toHaveBeenCalledWith('snapshot_timeout');
+    expect(target.leave).toHaveBeenCalledOnce();
+    const retried = await join();
+    retried.target.snapshot();
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(retried.events.onStatus).toHaveBeenLastCalledWith('connected');
+    expect(retried.events.onConnectionIssue).not.toHaveBeenCalled();
+  });
+
+  it('clears the old snapshot deadline when reconnecting', async () => {
+    const { target, events } = await join();
+    await vi.advanceTimersByTimeAsync(14900);
+    const rejoined = new TestRoom();
+    sdk.join.mockResolvedValueOnce(rejoined);
+    target.leaveHandler?.(1006);
+    await vi.advanceTimersByTimeAsync(750);
+    rejoined.snapshot();
+    expect(events.onConnectionIssue).not.toHaveBeenCalled();
+    expect(events.onStatus).toHaveBeenLastCalledWith('connected');
   });
 
   it('waits for the round snapshot, then requires an explicit matching acknowledgement', async () => {
@@ -217,6 +262,7 @@ describe('Bingo purchase acknowledgements and reconnects', () => {
     await connectToBingo('token', 'TESI-2026', events);
     expect(authentication.me).toHaveBeenCalledOnce();
     expect(sdk.join.mock.calls.map((call) => call[1].accessToken)).toEqual(['token', 'fresh-token']);
+    target.snapshot();
     expect(events.onStatus).toHaveBeenLastCalledWith('connected');
   });
 
@@ -252,6 +298,7 @@ describe('Bingo purchase acknowledgements and reconnects', () => {
     await oldConnection;
     expect(sdk.join).toHaveBeenCalledTimes(2);
     expect(oldEvents.onStatus).not.toHaveBeenCalledWith('failed');
+    replacement.snapshot();
     expect(newEvents.onStatus).toHaveBeenLastCalledWith('connected');
     expect(replacement.leave).not.toHaveBeenCalled();
   });

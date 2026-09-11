@@ -38,7 +38,7 @@ export default function ChatPanel({ onClose }: { onClose?: () => void }) {
 
   return (
     <section
-      className="pointer-events-auto flex h-72 w-80 max-w-[90vw] flex-col rounded-2xl border border-brand-300/20 bg-surface-900/88 shadow-panel backdrop-blur-xl"
+      className="pointer-events-auto flex h-72 w-full min-w-0 max-w-full flex-col rounded-2xl border border-brand-300/20 bg-surface-900/88 shadow-panel backdrop-blur-xl"
       aria-label="Chat della piazza"
     >
       <header className="flex items-center justify-between border-b border-surface-600/70 bg-brand-500/5 px-3.5 py-2.5">

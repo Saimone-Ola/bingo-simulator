@@ -16,7 +16,11 @@ export default defineConfig({
     // vendor bundle in the player's cache.
     rolldownOptions: {
       output: {
+        strictExecutionOrder: true,
         codeSplitting: {
+          // Keep shared React/Zustand dependencies out of the lazy 3D chunk.
+          // Recursively capturing them makes the login preload Three.js too.
+          includeDependenciesRecursively: false,
           groups: [
             { name: 'three', test: /[\\/]node_modules[\\/]three[\\/]/ },
             { name: 'r3f', test: /[\\/]node_modules[\\/]@react-three[\\/]/ },

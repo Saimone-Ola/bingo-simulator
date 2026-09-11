@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { loginSchema, registerSchema } from '@bingo/shared';
 import { Button, Field, Panel, ResponsiblePlayNotice } from '../components/ui';
+import ConnectionWaitHint from '../components/ConnectionWaitHint';
 import { useAuthStore } from '../store/auth';
 
 type Mode = 'login' | 'register';
@@ -222,6 +223,7 @@ export default function AuthPage() {
                   </label>
                 )}
 
+                {busy && <ConnectionWaitHint />}
                 {serverError && (
                   <p
                     role="alert"

@@ -19,6 +19,7 @@ import {
 import { wsOrigin } from "../lib/apiOrigin";
 import { api } from "../lib/api";
 import { useAuthStore } from "../store/auth";
+import { snapshotIssue, type BingoConnectionIssue } from './bingoProtocol';
 import {
   clearBingoEventSnapshot,
   publishBingoEventSnapshot,
@@ -31,6 +32,7 @@ export type BingoConnectionStatus =
   | "failed";
 
 export interface BingoHandlers {
+  onConnectionIssue?: (issue: BingoConnectionIssue) => void;
   onStatus: (status: BingoConnectionStatus) => void;
   onSnapshot: (payload: BingoSnapshotPayload) => void;
   onBall: (payload: BingoBallCalledPayload) => void;
@@ -68,6 +70,7 @@ let room: Room | null = null;
 let deliberateLeave = false;
 let connectionVersion = 0;
 let reconnectTimer: number | null = null;
+let snapshotTimer: number | null = null;
 let currentRoundId: string | null = null;
 let currentHandlers: BingoHandlers | null = null;
 let preparing = false;
@@ -155,7 +158,10 @@ export async function connectToBingo(
     reconnectTimer = null;
   }
   handlers.onStatus("connecting");
+  if (snapshotTimer !== null) window.clearTimeout(snapshotTimer);
+  snapshotTimer = null;
   currentHandlers = handlers;
+  currentRoundId = null;
 
   const roomCode = normaliseBingoRoomCode(requestedCode);
   let joined: Room | null = null;
@@ -205,6 +211,7 @@ export async function connectToBingo(
     return;
   }
   if (!joined) {
+    handlers.onConnectionIssue?.('network');
     handlers.onStatus("failed");
     throw lastError instanceof Error
       ? lastError
@@ -212,11 +219,30 @@ export async function connectToBingo(
   }
   room = joined;
   let receivedSnapshot = false;
+  const rejectSnapshot = (issue: BingoConnectionIssue) => {
+    if (version !== connectionVersion || deliberateLeave) return;
+    if (snapshotTimer !== null) window.clearTimeout(snapshotTimer);
+    snapshotTimer = null;
+    // Invalidate late messages before leaving. Never replay purchases to an
+    // older server which cannot provide persistent purchase acknowledgements.
+    connectionVersion += 1;
+    room = null;
+    currentRoundId = null;
+    clearBingoEventSnapshot();
+    handlers.onConnectionIssue?.(issue);
+    handlers.onStatus('failed');
+    void joined.leave(true).catch(() => undefined);
+  };
+  snapshotTimer = window.setTimeout(() => rejectSnapshot('snapshot_timeout'), 15_000);
 
   joined.onMessage(
     BINGO_SERVER_MESSAGES.snapshot,
     (payload: BingoSnapshotPayload) => {
       if (version !== connectionVersion || deliberateLeave) return;
+      const issue = snapshotIssue(payload);
+      if (issue) { rejectSnapshot(issue); return; }
+      if (snapshotTimer !== null) window.clearTimeout(snapshotTimer);
+      snapshotTimer = null;
       currentRoundId = payload.roundId;
       if (
         pendingPurchase &&
@@ -231,6 +257,7 @@ export async function connectToBingo(
       }
       if (!receivedSnapshot) {
         receivedSnapshot = true;
+        handlers.onStatus('connected');
         joined.send(BINGO_CLIENT_MESSAGES.setPreparing, { preparing });
         queuedMessages.length = 0;
         if (pendingPurchase) {
@@ -324,6 +351,8 @@ export async function connectToBingo(
 
   joined.onLeave((code) => {
     if (version !== connectionVersion) return;
+    if (snapshotTimer !== null) window.clearTimeout(snapshotTimer);
+    snapshotTimer = null;
     room = null;
     currentRoundId = null;
     clearBingoEventSnapshot();
@@ -342,7 +371,7 @@ export async function connectToBingo(
     }, 750);
   });
 
-  handlers.onStatus("connected");
+  // A WebSocket alone does not mean the room is ready: wait for its snapshot.
 }
 
 export function purchaseBingoCards(
@@ -467,6 +496,8 @@ export async function leaveBingo(): Promise<void> {
   queuedMessages.length = 0;
   clearPendingPurchase();
   clearBingoEventSnapshot();
+  if (snapshotTimer !== null) window.clearTimeout(snapshotTimer);
+  snapshotTimer = null;
   if (reconnectTimer !== null) {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = null;

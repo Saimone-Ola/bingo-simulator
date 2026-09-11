@@ -15,7 +15,7 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   balance: number;
-  status: 'idle' | 'loading' | 'ready';
+  status: 'idle' | 'loading' | 'ready' | 'offline';
   error: string | null;
 
   register: (input: {
@@ -96,12 +96,17 @@ export const useAuthStore = create<AuthState>()(
           set({ status: 'ready' });
           return;
         }
-        set({ status: 'loading' });
+        set({ status: 'loading', error: null });
         try {
           const me = await api.me();
           set({ user: me.user, balance: me.balance, status: 'ready', error: null });
-        } catch {
-          set({ user: null, accessToken: null, refreshToken: null, status: 'ready' });
+        } catch (error) {
+          if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+            set({ user: null, accessToken: null, refreshToken: null, balance: 0, status: 'ready', error: toMessage(error) });
+          } else {
+            // Network loss or a waking server must not discard a valid login.
+            set({ status: 'offline', error: toMessage(error) });
+          }
         }
       },
 

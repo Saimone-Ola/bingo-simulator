@@ -513,7 +513,9 @@ function PointsOfInterest({ currentPhase }: { currentPhase: number }) {
   );
 }
 
-export default function HubWorld({ currentPhase = 1 }: { currentPhase?: number }) {
+export default function HubWorld({ currentPhase = 1, shadows = true, shadowMapSize = 1024, lowQuality = false }: {
+  currentPhase?: number; shadows?: boolean; shadowMapSize?: number; lowQuality?: boolean;
+}) {
   return (
     <group>
       <color attach="background" args={['#251d58']} />
@@ -526,8 +528,8 @@ export default function HubWorld({ currentPhase = 1 }: { currentPhase?: number }
         position={[20, 30, 12]}
         intensity={3.2}
         color="#fff4dc"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
+        castShadow={shadows}
+        shadow-mapSize={[shadowMapSize, shadowMapSize]}
         shadow-camera-left={-34}
         shadow-camera-right={34}
         shadow-camera-top={34}
@@ -537,7 +539,7 @@ export default function HubWorld({ currentPhase = 1 }: { currentPhase?: number }
       />
       <directionalLight position={[-22, 12, -18]} intensity={1.2} color="#a899ff" />
 
-      <Sparkles count={65} scale={[54, 11, 54]} size={2.2} speed={0.22} color="#fff1bd" opacity={0.38} />
+      {!lowQuality && <Sparkles count={65} scale={[54, 11, 54]} size={2.2} speed={0.22} color="#fff1bd" opacity={0.38} />}
 
       <Ground />
       <Perimeter />

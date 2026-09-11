@@ -3,11 +3,13 @@ import { BrowserRouter, Navigate, Route, Routes, type RouteProps } from 'react-r
 import AppErrorBoundary from './components/AppErrorBoundary';
 import BingoEventOverlay from './components/BingoEventOverlay';
 import AuthPage from './routes/AuthPage';
-import HubPage from './routes/HubPage';
+import { Button } from './components/ui';
+import ConnectionWaitHint from './components/ConnectionWaitHint';
 import { useAuthStore } from './store/auth';
 
 // Developer-facing and rarely opened surfaces stay outside the entry chunk.
 const StyleGuidePage = lazy(() => import('./routes/StyleGuidePage'));
+const HubPage = lazy(() => import('./routes/HubPage'));
 const BingoPage = lazy(() => import('./routes/BingoPage'));
 const ThesisModePage = lazy(() => import('./routes/ThesisModePage'));
 const ArcadePage = lazy(() => import('./routes/ArcadePage'));
@@ -16,9 +18,10 @@ const SlotEditorPage = lazy(() => import('./routes/SlotEditorPage'));
 function RouteLoader({ label }: { label: string }) {
   return (
     <div className="grid h-full min-h-dvh place-items-center bg-[#090816] text-content-muted">
-      <div className="grid justify-items-center gap-4">
+      <div role="status" className="grid max-w-sm justify-items-center gap-4 px-5 text-center">
         <div className="h-11 w-11 animate-spin rounded-full border-4 border-white/10 border-t-violet-400" />
         <p className="text-sm font-black uppercase tracking-[0.18em]">{label}</p>
+        <ConnectionWaitHint />
       </div>
     </div>
   );
@@ -31,6 +34,13 @@ function Protected({ children }: { children: RouteProps['element'] }) {
 
   if (status === 'idle' || status === 'loading') {
     return <RouteLoader label="Ripristino sessione" />;
+  }
+  if (status === 'offline') {
+    return <div className="grid h-full min-h-dvh place-items-center bg-surface-950 p-5 text-center"><div className="grid max-w-sm gap-4">
+      <h1 className="text-xl font-bold">Il server non risponde</h1>
+      <p className="text-sm text-content-secondary">La sessione è stata conservata. Controlla la connessione e riprova: il server potrebbe essere in riavvio.</p>
+      <Button onClick={() => void useAuthStore.getState().restore()}>Riprova a entrare</Button>
+    </div></div>;
   }
   return user ? <>{children}</> : <Navigate to="/" replace />;
 }
@@ -53,7 +63,9 @@ export default function App() {
             path="/hub"
             element={
               <Protected>
-                <HubPage />
+                <Suspense fallback={<RouteLoader label="Apertura piazza" />}>
+                  <HubPage />
+                </Suspense>
               </Protected>
             }
           />

@@ -5,6 +5,7 @@ import { AdaptiveDpr, Stats } from '@react-three/drei';
 import Crowd from './Crowd';
 import HubWorld from './HubWorld';
 import PlayerController from './PlayerController';
+import { renderProfile, useHallSettings } from '../store/hallSettings';
 
 /**
  * The hub canvas.
@@ -18,13 +19,17 @@ import PlayerController from './PlayerController';
  *  - the crowd is instanced (see Crowd.tsx), so the whole plaza is three draw
  *    calls rather than sixty.
  */
-export default function HubScene({ showStats = false }: { showStats?: boolean }) {
+export default function HubScene({ showStats = false, inputEnabled = true }: { showStats?: boolean; inputEnabled?: boolean }) {
+  const quality = useHallSettings((state) => state.quality);
+  const shadows = useHallSettings((state) => state.shadows);
+  const profile = renderProfile(quality);
   return (
     <Canvas
-      shadows="percentage"
+      key={profile.antialias ? 'antialiased' : 'lightweight'}
+      shadows={shadows ? 'percentage' : false}
       camera={{ position: [0, 5, 14], fov: 52, near: 0.1, far: 140 }}
-      dpr={[1, 1.75]}
-      gl={{ antialias: true, powerPreference: 'high-performance' }}
+      dpr={[...profile.dpr]}
+      gl={{ antialias: profile.antialias, powerPreference: 'high-performance' }}
       onCreated={({ gl }) => {
         gl.toneMappingExposure = 1.18;
 
@@ -43,10 +48,10 @@ export default function HubScene({ showStats = false }: { showStats?: boolean })
       }}
     >
       <Suspense fallback={null}>
-        <HubWorld />
+        <HubWorld shadows={shadows} shadowMapSize={profile.shadowMapSize} lowQuality={quality === 'LOW'} />
         <Crowd />
       </Suspense>
-      <PlayerController />
+      <PlayerController inputEnabled={inputEnabled} />
       <AdaptiveDpr />
       {showStats && <Stats />}
     </Canvas>

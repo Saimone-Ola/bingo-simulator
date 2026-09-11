@@ -41,25 +41,36 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
   if (options.body !== undefined) headers['content-type'] = 'application/json';
   if (options.accessToken) headers.authorization = `Bearer ${options.accessToken}`;
 
-  const response = await fetch(`${API_URL}${path}`, {
-    method: options.method ?? 'GET',
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    signal: options.signal ?? null,
-  });
+  // Allow a free Render instance to wake, but never leave a request pending forever.
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(options.signal?.reason);
+  if (options.signal?.aborted) onAbort();
+  else options.signal?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(new Error('Il server non risponde. Riprova.')), 75_000);
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
+    });
 
-  if (response.status === 204) return undefined as T;
+    if (response.status === 204) return undefined as T;
 
-  const payload: unknown = await response.json().catch(() => null);
+    const payload: unknown = await response.json().catch(() => null);
 
-  if (!response.ok) {
-    if (isApiErrorBody(payload)) {
-      throw new ApiError(payload.error.code, response.status, payload.error.message, payload.error.fields);
+    if (!response.ok) {
+      if (isApiErrorBody(payload)) {
+        throw new ApiError(payload.error.code, response.status, payload.error.message, payload.error.fields);
+      }
+      throw new ApiError('internal_error', response.status, `Request to ${path} failed`);
     }
-    throw new ApiError('internal_error', response.status, `Request to ${path} failed`);
-  }
 
-  return payload as T;
+    return payload as T;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', onAbort);
+  }
 }
 
 /**
@@ -96,7 +107,9 @@ async function refreshTokens(): Promise<AuthResponse> {
       return response;
     })
     .catch((error: unknown) => {
-      broker?.onRefreshFailed();
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        broker?.onRefreshFailed();
+      }
       throw error;
     })
     .finally(() => {
